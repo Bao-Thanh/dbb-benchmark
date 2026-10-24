@@ -1,17 +1,170 @@
 # DBB Benchmark Research Lab
 
-Dự án thử nghiệm đánh giá **thiên kiến (bias) của mô hình ngôn ngữ lớn (LLM)** trên máy cá nhân bằng **Ollama** và **Streamlit**. Website có ba phần: (1) đánh giá trên DBB, (2) so sánh thăm dò bốn benchmark, và (3) xem các trường hợp DBB và BBQ cạnh nhau.
+> **Tài liệu onboarding, cài đặt, vận hành và hướng dẫn đọc source code**  
+> Ngôn ngữ: Tiếng Việt · Nền tảng chính: Windows 10/11 · Giao diện: Streamlit · LLM cục bộ: Ollama
 
-## 1. Yêu cầu trước khi bắt đầu
+[![Python](https://img.shields.io/badge/Python-3.11%2B-blue)](https://www.python.org/) [![Ollama](https://img.shields.io/badge/Inference-Ollama-black)](https://ollama.com/) [![UI](https://img.shields.io/badge/UI-Streamlit-red)](https://streamlit.io/)
 
-- Windows 10/11 và **PowerShell**.
-- **Python 3.10 trở lên** (khuyến nghị Python 3.11 hoặc 3.12); khi cài nhớ bật tùy chọn thêm Python vào PATH.
-- Kết nối Internet để cài thư viện và tải model.
-- **Ollama** cho chạy LLM cục bộ: <https://ollama.com/download/windows>.
-- **Git** nếu muốn làm việc chung qua GitHub: <https://git-scm.com/downloads>.
-- Không bắt buộc có GPU rời; chạy CPU có thể chậm, nhất là khi chọn nhiều model.
+## Mục lục
 
-Kiểm tra môi trường trong PowerShell:
+1. [Giới thiệu và phạm vi nghiên cứu](#1-giới-thiệu-và-phạm-vi-nghiên-cứu)
+2. [Kiến trúc và luồng dữ liệu](#2-kiến-trúc-và-luồng-dữ-liệu)
+3. [Cấu trúc repository và giải thích từng file](#3-cấu-trúc-repository-và-giải-thích-từng-file)
+4. [Chuẩn bị máy mới](#4-chuẩn-bị-máy-mới)
+5. [Clone GitHub và cài Python](#5-clone-github-và-cài-python)
+6. [Cài Ollama và lưu model trong `llm/`](#6-cài-ollama-và-lưu-model-trong-llm)
+7. [Tải các model](#7-tải-các-model)
+8. [Chuẩn bị 4 benchmark](#8-chuẩn-bị-4-benchmark)
+9. [Chạy website](#9-chạy-website)
+10. [Thực nghiệm 1 — DBB](#10-thực-nghiệm-1--dbb)
+11. [Thực nghiệm 2 — So sánh benchmark](#11-thực-nghiệm-2--so-sánh-benchmark)
+12. [Thực nghiệm 3 — DBB và BBQ](#12-thực-nghiệm-3--dbb-và-bbq)
+13. [Chạy worker bằng dòng lệnh](#13-chạy-worker-bằng-dòng-lệnh)
+14. [Giải thích dữ liệu đầu ra và kiểm chứng](#14-giải-thích-dữ-liệu-đầu-ra-và-kiểm-chứng)
+15. [Các script bổ trợ và phụ thuộc](#15-các-script-bổ-trợ-và-phụ-thuộc)
+16. [Lỗi thường gặp và cách xử lý](#16-lỗi-thường-gặp-và-cách-xử-lý)
+17. [Git/GitHub: quy trình cộng tác](#17-gitgithub-quy-trình-cộng-tác)
+18. [Giới hạn nghiên cứu và checklist bàn giao](#18-giới-hạn-nghiên-cứu-và-checklist-bàn-giao)
+
+---
+
+## 1. Giới thiệu và phạm vi nghiên cứu
+
+Dự án sử dụng mô hình ngôn ngữ lớn (LLM) để **khảo sát dấu hiệu thiên kiến (bias)** trong lựa chọn đáp án, với trọng tâm là bộ dữ liệu **DBB** và ba bộ benchmark khác: **BBQ**, **CrowS-Pairs**, **StereoSet**.
+
+**Thiên kiến** trong bối cảnh này là xu hướng lựa chọn/đánh giá bị ảnh hưởng bởi những đặc điểm nhân khẩu học, chẳng hạn giới tính, tuổi, chủng tộc, tôn giáo và điều kiện kinh tế–xã hội. Các câu có nội dung định kiến trong dataset được dùng để *đánh giá mô hình*, không phải các khẳng định đúng về con người.
+
+Website hiện có ba mục:
+
+| Thực nghiệm | Mục đích | Đầu ra | Lưu ý |
+|---|---|---|---|
+| **1 — Đánh giá DBB** | Chạy nhiều model trên một tập dòng DBB | CSV từng lượt, bảng và biểu đồ | `ans1_rate` **không phải** bias score chính thức |
+| **2 — So sánh benchmark** | Thăm dò DBB, BBQ, CrowS-Pairs, StereoSet trên cùng một model | CSV so sánh, bảng tỷ lệ | Các tỷ lệ có định nghĩa khác nhau, không được so trực tiếp như một thước đo |
+| **3 — DBB vs BBQ** | Quan sát hai trường hợp cụ thể với cùng model | CSV phân tích tình huống | Hai ví dụ không nhất thiết là cặp đối chứng tương đương |
+
+**Quan trọng:** Đây là source khôi phục từ các phiên bản code trong cuộc trò chuyện. Chưa xác nhận mọi luồng chạy thành công trên mọi máy. Dự án **chạy suy luận (inference)**, **không huấn luyện/fine-tune** LLM. Chưa phải bản tái lập đầy đủ phương pháp và thước đo chính thức của bài báo DBB.
+
+Tài liệu tham khảo chính: [DBB — Findings of EMNLP 2025](https://aclanthology.org/2025.findings-emnlp.76.pdf).
+
+## 2. Kiến trúc và luồng dữ liệu
+
+```mermaid
+flowchart TD
+    A[Người dùng mở Streamlit] --> B[Code/dbb_web.py]
+    B --> C{Chọn thực nghiệm}
+    C -->|1 DBB| D[Code/dbb_batch_worker.py]
+    C -->|2 Bốn benchmark| E[Hàm experiment_2 trong dbb_web.py]
+    C -->|3 DBB vs BBQ| F[Hàm experiment_3 trong dbb_web.py]
+    D --> G[Dataset/Bias-Dataset.csv]
+    E --> H[Dataset/*.csv]
+    F --> H
+    D --> I[Ollama API localhost:11434]
+    E --> I
+    F --> I
+    I --> J[Model tải riêng trong llm/]
+    D --> K[Results/batch_demo/]
+    E --> L[Results/experiment2/]
+    F --> M[Results/experiment3/]
+    K --> N[Bảng, biểu đồ, CSV]
+```
+
+**Luồng của Thực nghiệm 1:** chọn model và số dòng → website khởi chạy worker Python nền → worker tạo prompt A/B → gửi request HTTP tới Ollama → phân tích đáp án → ghi CSV → Streamlit đọc CSV để cập nhật tiến độ và biểu đồ.
+
+Ollama chạy tại `http://127.0.0.1:11434`. Đây là API **trên máy của thành viên**, không phải dịch vụ cloud bắt buộc.
+
+## 3. Cấu trúc repository và giải thích từng file
+
+```text
+dbb-benchmark/
+├── Code/
+│   ├── dbb_web.py                 # WEBSITE CHÍNH: 3 thực nghiệm
+│   ├── dbb_batch_worker.py        # Worker nền cho Thực nghiệm 1
+│   ├── download_models.ps1        # Tải 8 model; thêm vào Code/ nếu chưa commit
+│   ├── download_benchmarks.py     # Tải CrowS-Pairs và StereoSet
+│   ├── compare_models.py         # CLI so sánh model DBB (luồng riêng)
+│   ├── dbb_demo.py               # Streamlit demo cũ/luồng bổ trợ
+│   ├── dbb_pipeline.py           # Pipeline dùng Groq API, KHÔNG phải Ollama
+│   ├── experiment3_dbb_bbq.py    # Streamlit phân tích DBB/BBQ độc lập
+│   └── archive_versions/         # Bản code cũ; không dùng làm entrypoint mặc định
+├── Dataset/
+│   ├── Bias-Dataset.csv           # DBB; cung cấp riêng nếu bị .gitignore
+│   ├── BBQ-Dataset.csv            # BBQ; cung cấp riêng nếu bị .gitignore
+│   ├── CrowS-Pairs.csv            # Tạo sau khi chạy download_benchmarks.py
+│   └── StereoSet.csv              # Tạo sau khi chạy download_benchmarks.py
+├── Results/                       # Tạo tự động khi chạy; không commit
+│   ├── batch_demo/
+│   ├── experiment2/
+│   └── experiment3/
+├── llm/                           # Ollama model weights; KHÔNG commit
+├── requirements.txt               # Phụ thuộc cho website Ollama chính
+├── setup_ollama_models.ps1        # Thiết lập OLLAMA_MODELS trong Windows
+├── pull_models_later.ps1          # Script tải model thay thế, nếu có
+├── README.md                      # File tài liệu này khi đưa lên repo
+└── .gitignore
+```
+
+> **Chú ý:** Cấu trúc trên mô tả bộ source khôi phục và các script đã tạo thêm trong cuộc trò chuyện. Nếu repository thực tế chưa có một file, cần bổ sung file đó trước khi chạy lệnh liên quan. Git không theo dõi thư mục trống; có thể thêm `.gitkeep` nếu cần.
+
+### 3.1 `Code/dbb_web.py` — điểm khởi chạy chính
+
+- Dùng **Streamlit** để tạo giao diện.
+- Hiển thị menu 3 thực nghiệm bằng `st.radio`.
+- **`experiment_1()`**: nạp DBB, hỏi Ollama danh sách model, chọn mẫu, chạy `dbb_batch_worker.py` bằng `subprocess.Popen`, đọc trạng thái/CSV và vẽ biểu đồ.
+- **`experiment_2()`**: đọc tối đa bốn benchmark, gửi prompt tới Ollama, tính các tỷ lệ thăm dò, ghi CSV.
+- **`experiment_3()`**: cho chọn một trường hợp DBB và một câu BBQ, chạy chung một model, hiển thị hai kết quả và lưu nhật ký.
+- **Không cần chạy trực tiếp** bằng `python Code/dbb_web.py`; dùng `python -m streamlit run Code/dbb_web.py`.
+
+### 3.2 `Code/dbb_batch_worker.py` — worker Thực nghiệm 1
+
+| Hàm | Vai trò |
+|---|---|
+| `parse_answer()` | Nhận dạng đáp án `A`/`B` ở đầu phản hồi |
+| `sample_rows()` | Lấy mẫu xác định theo nhóm bias hoặc theo khoảng `row_id` |
+| `run_id_for()` | Tạo mã định danh tập dòng bằng SHA-256 rút gọn |
+| `write_status()` | Ghi trạng thái JSON; bản Windows-fix thử lại nếu file đang bị khóa |
+| `existing_done()` | Đọc CSV cũ để bỏ qua cặp `(model, row_id)` đã chạy thành công |
+| `main()` | Nhận tham số CLI, gọi Ollama, ghi CSV và cập nhật tiến độ |
+
+**Cách chọn mẫu:** `--limit 20` lấy khoảng 4 dòng từ mỗi nhóm trong 5 nhóm bias, với `random_state=42`; `--start 0 --end 19` lấy **20 dòng liên tiếp** (hai cách không tương đương). `--limit 0` chạy toàn bộ dữ liệu, rất tốn thời gian.
+
+**Cách ánh xạ đáp án:** với `row_id` chẵn, `A=ans1`, `B=ans2`; với `row_id` lẻ thì đổi ngược lại. Worker lưu `selected_original` là `ans1` hoặc `ans2` để tránh nhầm do đảo thứ tự.
+
+**Cấu hình gọi model trong worker hiện tại:** `temperature=0`, `seed=42`, `num_predict=32`, `num_ctx=2048`, `think=false`, `stream=false`, `keep_alive=2m`, timeout mặc định 120 giây. Chạy tuần tự qua các model/dòng trong một worker.
+
+**Giới hạn đã biết:** `run_id` dựa trên tập dòng và kích thước dataset, **không chứa danh sách model**. Vì vậy nhiều lệnh chạy các model khác nhau có thể ghi chung một CSV; không chạy đồng thời nhiều worker cùng `run_id`. Dòng log `COMPLETED x/y` trong một số trường hợp chạy bổ sung một model có thể hiển thị mẫu số không khớp tổng CSV; kiểm tra kết quả thực bằng CSV.
+
+### 3.3 `Code/download_benchmarks.py`
+
+- Tải CrowS-Pairs CSV từ repository nguồn.
+- Tải StereoSet `dev.json`, trích các cặp `stereotype` và `anti-stereotype`, chuyển thành `Dataset/StereoSet.csv`.
+- **Không tải DBB và BBQ**; hai file này phải được chuẩn bị riêng.
+- Cần Internet; nếu URL nguồn thay đổi có thể phải cập nhật script.
+
+### 3.4 Các script còn lại
+
+| File | Chức năng | Có cần cho website chính? |
+|---|---|---|
+| `compare_models.py` | CLI đánh giá nhiều model trên DBB, ghi `Results` riêng; có `--per-group`, `--models`, `--report-only` | Không |
+| `dbb_demo.py` | Giao diện demo Streamlit riêng | Không |
+| `experiment3_dbb_bbq.py` | Giao diện phân tích trường hợp DBB/BBQ độc lập | Không |
+| `dbb_pipeline.py` | Pipeline dùng **Groq API** và `openai/gpt-oss-20b`, có báo cáo; cần API key và thư viện riêng | Không |
+| `archive_versions/` | Lưu các phiên bản lịch sử để đối chiếu | Không |
+| `setup_ollama_models.ps1` | Thiết lập biến môi trường Windows để Ollama lưu model trong `llm/` | Có ích |
+| `Code/download_models.ps1` | Script tải tuần tự 8 model và hỗ trợ `-OnlyMissing` | Có ích |
+
+## 4. Chuẩn bị máy mới
+
+### 4.1 Phần mềm
+
+- Windows 10/11, VS Code (khuyến nghị), Git.
+- Python **3.11 hoặc 3.12** khuyến nghị cho website chính.
+- Ollama bản Windows: <https://ollama.com/download/windows>.
+- Internet để cài thư viện, tải model và benchmark.
+- Không bắt buộc GPU rời; chạy CPU có thể chậm đáng kể.
+
+### 4.2 Kiểm tra trong PowerShell
+
+Mở **VS Code → Terminal → New Terminal** và chạy từng lệnh:
 
 ```powershell
 python --version
@@ -19,266 +172,600 @@ git --version
 ollama --version
 ```
 
-Nếu `ollama` chưa được nhận diện, hãy cài Ollama, đóng và mở lại PowerShell.
+Nếu `python` không được nhận diện, cài Python và mở lại terminal. Nếu `ollama` không được nhận diện, cài Ollama rồi mở lại terminal; trên một số máy, có thể gọi trực tiếp file `ollama.exe`.
 
-## 2. Lấy source code
+## 5. Clone GitHub và cài Python
 
-**Nếu nhận file ZIP:** giải nén `DBB_Benchmark_Full_Source_Recovery.zip`, mở thư mục `dbb-benchmark-recovered` bằng VS Code, chọn **Terminal → New Terminal**.
-
-**Nếu dự án đã được đưa lên GitHub:**
+### Bước 1 — Clone repo
 
 ```powershell
-git clone https://github.com/<OWNER>/<REPOSITORY>.git
-cd <REPOSITORY>
+git clone https://github.com/Bao-Thanh/dbb-benchmark.git
+cd dbb-benchmark
 ```
 
-Thay `<OWNER>` và `<REPOSITORY>` bằng thông tin repository thật. Các lệnh còn lại đều chạy **tại thư mục gốc**, nơi chứa `requirements.txt`.
+Nếu đã clone rồi, chỉ cần mở đúng thư mục trong VS Code. **Tất cả lệnh dưới đây giả định terminal đang ở thư mục chứa `requirements.txt`.**
 
-## 3. Cấu trúc thư mục
-
-```text
-dbb-benchmark/
-├── Code/
-│   ├── dbb_web.py                  # Website Streamlit: 3 thực nghiệm
-│   ├── dbb_batch_worker.py         # Chạy DBB ở tiến trình nền, ghi CSV
-│   ├── download_benchmarks.py      # Tải CrowS-Pairs và StereoSet
-│   ├── dbb_pipeline.py             # Pipeline hỗ trợ
-│   ├── dbb_demo.py                 # Mã thử nghiệm bổ sung
-│   ├── compare_models.py           # Mã so sánh model bổ sung
-│   ├── experiment3_dbb_bbq.py      # Mã thăm dò DBB và BBQ
-│   └── archive_versions/           # Các bản cũ để tham khảo
-├── Dataset/
-│   ├── Bias-Dataset.csv            # DBB: có trong ZIP khôi phục
-│   ├── BBQ-Dataset.csv             # BBQ: có trong ZIP khôi phục
-│   ├── CrowS-Pairs.csv             # Tải sau, chưa có trong ZIP
-│   └── StereoSet.csv               # Tải sau, chưa có trong ZIP
-├── Results/                       # CSV/log/trạng thái tạo lúc chạy
-├── llm/                           # Thư mục model Ollama (ban đầu rỗng)
-├── requirements.txt
-├── setup_ollama_models.ps1
-├── pull_models_later.ps1
-├── README.md
-└── .gitignore
-```
-
-**Lưu ý:** `llm/` chỉ là nơi lưu model. **Không có model weights trong source code**; mỗi thành viên tự tải trên máy mình.
-
-## 4. Tạo môi trường Python và cài thư viện
-
-Tại thư mục gốc dự án:
+### Bước 2 — Tạo môi trường ảo
 
 ```powershell
 python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
 ```
 
-Nếu PowerShell chặn `Activate.ps1`, chỉ áp dụng cho **cửa sổ hiện tại** rồi thử lại:
+### Bước 3 — Kích hoạt
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+```
+
+Nếu PowerShell chặn script:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 .\.venv\Scripts\Activate.ps1
 ```
 
-Nếu không muốn kích hoạt môi trường, dùng trực tiếp `\.venv\Scripts\python.exe` thay cho `python` trong các lệnh tiếp theo.
+Nếu dùng **Git Bash** thay vì PowerShell:
 
-## 5. Cài Ollama và đặt thư mục model
+```bash
+source .venv/Scripts/activate
+```
 
-Cài Ollama từ trang chính thức, sau đó tại thư mục gốc chạy:
+### Bước 4 — Cài thư viện
+
+```powershell
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
+
+`requirements.txt` trong bản source khôi phục gồm `pandas`, `requests`, `streamlit`, `matplotlib`. Đây là nhóm thư viện cho luồng **website Ollama**, không phải tất cả script phụ trợ.
+
+### Bước 5 — Kiểm tra
+
+```powershell
+python -c "import pandas, requests, streamlit, matplotlib; print('Python dependencies OK')"
+```
+
+## 6. Cài Ollama và lưu model trong `llm/`
+
+**Vì sao phải cấu hình?** Nếu không cấu hình, Ollama có thể lưu model ở thư mục mặc định của Windows thay vì `dbb-benchmark/llm/`.
+
+### Cách khuyến nghị — script có sẵn
+
+1. Cài Ollama.
+2. Mở PowerShell ở thư mục gốc dự án.
+3. Chạy:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\setup_ollama_models.ps1
 ```
 
-Script tạo thư mục `llm/` và đặt biến môi trường người dùng `OLLAMA_MODELS` trỏ tới đó. **Thoát hẳn Ollama ở system tray và mở lại** để Ollama nhận đường dẫn mới. Nếu cần, mở lại PowerShell.
-
-Kiểm tra đường dẫn:
+4. **Thoát hoàn toàn Ollama ở system tray** (không chỉ đóng cửa sổ).
+5. Mở lại Ollama và mở terminal mới.
+6. Kiểm tra:
 
 ```powershell
 [Environment]::GetEnvironmentVariable('OLLAMA_MODELS', 'User')
 ```
 
-> Đừng commit `llm/` hoặc di chuyển thư mục sau khi đã tải model nếu chưa cập nhật lại `OLLAMA_MODELS`.
+Kết quả mong đợi là **đường dẫn tuyệt đối** đến `...\dbb-benchmark\llm`.
 
-## 6. Tải 8 model (có thể làm sau)
+### Cách thủ công — khi thiếu script
 
-Khi có Internet và đủ dung lượng ổ đĩa:
+Trong PowerShell, đứng tại thư mục gốc repo:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\pull_models_later.ps1
+$modelPath = (New-Item -ItemType Directory -Force -Path .\llm).FullName
+[Environment]::SetEnvironmentVariable('OLLAMA_MODELS', $modelPath, 'User')
+$env:OLLAMA_MODELS = $modelPath
 ```
 
-Danh sách model mà script sẽ tải:
+**Bắt buộc khởi động lại Ollama server** sau khi đổi biến môi trường. Chỉ đặt `$env:OLLAMA_MODELS` trong terminal không đảm bảo Ollama server đang chạy nhận giá trị mới.
 
-| Model | Tên trong Ollama |
-|---|---|
-| Qwen3 nhỏ | `qwen3:0.6b` |
-| Qwen3 | `qwen3:1.7b` |
-| Llama 3.2 | `llama3.2:1b` |
-| Gemma 3 | `gemma3:1b` |
-| Phi-3 Mini | `phi3:mini` |
-| SmolLM2 | `smollm2:1.7b` |
-| StableLM2 | `stablelm2:1.6b` |
-| TinyLlama | `tinyllama:1.1b` |
+## 7. Tải các model
 
-Không cần tải cả 8 model ngay. Có thể tải thử một model:
+### 7.1 Danh sách 8 model dùng trong thử nghiệm
+
+| STT | Ollama model tag | Ghi chú |
+|---:|---|---|
+| 1 | `qwen3:0.6b` | Model nhỏ |
+| 2 | `qwen3:1.7b` | Model nhỏ |
+| 3 | `llama3.2:1b` | Model nhỏ |
+| 4 | `gemma3:1b` | Model nhỏ |
+| 5 | `phi3:mini` | Model lớn hơn một số model 1B |
+| 6 | `smollm2:1.7b` | Model nhỏ |
+| 7 | `stablelm2:1.6b` | Model nhỏ |
+| 8 | `tinyllama:1.1b` | Model nhỏ |
+
+**Không commit model weights lên GitHub.** Mỗi thành viên tự tải; dung lượng tổng phụ thuộc phiên bản model Ollama.
+
+### 7.2 Cách A — script `download_models.ps1`
+
+Đảm bảo đã đặt file tại `Code/download_models.ps1`, sau đó:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\Code\download_models.ps1
+```
+
+Nếu tải bị ngắt, thử:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\Code\download_models.ps1 -OnlyMissing
+```
+
+**Chú ý:** Script này đặt `$env:OLLAMA_MODELS` cho tiến trình PowerShell, nhưng Ollama server phải được **khởi động lại với biến môi trường người dùng đúng** như Mục 6 thì model mới chắc chắn nằm trong `llm/`.
+
+### 7.3 Cách B — tải thủ công, không phụ thuộc script
 
 ```powershell
 ollama pull qwen3:0.6b
-ollama list
+ollama pull qwen3:1.7b
+ollama pull llama3.2:1b
+ollama pull gemma3:1b
+ollama pull phi3:mini
+ollama pull smollm2:1.7b
+ollama pull stablelm2:1.6b
+ollama pull tinyllama:1.1b
 ```
 
-Để kiểm tra model chạy được:
+### 7.4 Kiểm tra và test model
 
 ```powershell
+ollama list
 ollama run qwen3:0.6b
 ```
 
-Gõ `/bye` để thoát chế độ chat.
+Gõ một câu thử nghiệm, sau đó `/bye` để thoát chế độ chat. Kiểm tra model đang nạp:
 
-## 7. Chuẩn bị dữ liệu
+```powershell
+ollama ps
+```
 
-Trong ZIP khôi phục đã có `Dataset/Bias-Dataset.csv` và `Dataset/BBQ-Dataset.csv`. Để tải thêm hai benchmark còn thiếu:
+Nếu website không thấy model, hãy xác nhận Ollama đã chạy và lệnh `ollama list` có trả về model.
+
+## 8. Chuẩn bị 4 benchmark
+
+### 8.1 Dataset DBB — bắt buộc cho Thực nghiệm 1
+
+Đường dẫn:
+
+```text
+Dataset/Bias-Dataset.csv
+```
+
+Các cột được worker sử dụng: `Context`, `ans1`, `ans2`, `Label`, `bias_type`, `target`. Dataset gốc còn có các trường như `bias type1`, `bias type2`, `explanation`.
+
+### 8.2 Dataset BBQ — cần cho Thực nghiệm 2 và 3
+
+Đường dẫn dự kiến:
+
+```text
+Dataset/BBQ-Dataset.csv
+```
+
+Các cột cần thiết: `context`, `question`, `ans0`, `ans1`, `ans2`, `label`; các cột bổ sung như `category`, `context_condition` có thể hỗ trợ lọc.
+
+**Thực nghiệm 3 hiện dùng nút upload CSV BBQ trên website**; việc có file tại `Dataset/` không đồng nghĩa tab 3 tự đọc file đó.
+
+### 8.3 CrowS-Pairs và StereoSet
 
 ```powershell
 python Code\download_benchmarks.py
 ```
 
-Sau khi chạy, kiểm tra `Dataset/` có `CrowS-Pairs.csv` và `StereoSet.csv` hay chưa. Nếu tải thất bại, kiểm tra Internet, thông báo lỗi và nguồn dữ liệu; không giả định file đã tồn tại.
+Sau khi chạy thành công, dự kiến có:
 
-**Với GitHub:** dữ liệu CSV lớn được bỏ qua bởi `.gitignore` đi kèm. Khi clone repository, thành viên cần nhận dữ liệu từ nguồn được phép phân phối hoặc chạy script tải phù hợp. Đừng tự commit dữ liệu nếu chưa kiểm tra giấy phép và kích thước file.
+```text
+Dataset/CrowS-Pairs.csv
+Dataset/StereoSet.json
+Dataset/StereoSet.csv
+```
 
-## 8. Khởi động website
+CrowS-Pairs cần `sent_more`, `sent_less`. StereoSet CSV cần `stereotype`, `anti_stereotype`.
 
-Đảm bảo Ollama đang mở. Trong PowerShell tại thư mục gốc:
+### 8.4 Kiểm tra các file
+
+```powershell
+Get-ChildItem .\Dataset
+python -c "import pandas as pd; d=pd.read_csv('Dataset/Bias-Dataset.csv'); print('DBB rows:',len(d)); print('Columns:',list(d.columns))"
+```
+
+**Lưu ý Git:** `.gitignore` khuyến nghị loại trừ `Dataset/*.csv`, vì dữ liệu có thể lớn và có giấy phép/phạm vi phân phối riêng. Do đó **clone repo không đảm bảo đã có dữ liệu**. Nhóm cần thống nhất nơi chia sẻ dataset hợp lệ và cách xác minh phiên bản.
+
+## 9. Chạy website
+
+### Bước 1 — Kiểm tra Ollama đang chạy
+
+```powershell
+ollama list
+```
+
+### Bước 2 — Mở Streamlit
 
 ```powershell
 python -m streamlit run Code\dbb_web.py
 ```
 
-Mở địa chỉ do Streamlit in ra (thường là `http://localhost:8501`). Dừng website bằng **Ctrl + C** trong terminal.
+### Bước 3 — Truy cập trình duyệt
 
-### Thực nghiệm 1 — Đánh giá DBB
+Thông thường Streamlit mở tại:
 
-1. Chọn tab **1 · Đánh giá DBB**.
-2. Chọn **Theo số lượng** (ví dụ 20 dòng) hoặc **Theo khoảng dòng**.
-3. Chọn model Ollama đã tải.
-4. Nhấn **Chạy**; chờ worker ghi kết quả.
-5. Xem tiến độ, bảng, biểu đồ và CSV trong `Results/batch_demo/`.
-6. Nếu dừng giữa chừng, giữ lại CSV; với cùng cấu hình dữ liệu, worker có cơ chế tiếp tục các cặp `(model, row_id)` chưa hoàn tất thành công.
-
-**Khuyến nghị khi chạy CPU:** thử **1 model × 5–20 dòng** trước, rồi mới tăng quy mô. Một câu trả lời chậm hoặc timeout không đồng nghĩa toàn bộ thí nghiệm đã thất bại.
-
-### Thực nghiệm 2 — So sánh benchmark
-
-1. Chọn tab **2 · So sánh benchmark**.
-2. Kiểm tra bốn bộ dữ liệu: **DBB, BBQ, CrowS-Pairs, StereoSet**.
-3. Chọn model, số mẫu và benchmark cần chạy.
-4. Nhấn chạy và xem bảng so sánh; kết quả lưu tại `Results/experiment2/`.
-
-**Quan trọng:** Các tỷ lệ được hiển thị có **định nghĩa khác nhau** giữa benchmark. Không dùng chúng như một thước đo bias chung hoặc điểm chuẩn chính thức.
-
-### Thực nghiệm 3 — DBB vs BBQ
-
-1. Chọn tab **3 · DBB vs BBQ**.
-2. Chọn model và trường hợp DBB.
-3. Tải lên file CSV BBQ khi giao diện yêu cầu.
-4. Chọn trường hợp BBQ và chạy cả hai.
-5. Xem phản hồi gốc và kết quả tại `Results/experiment3/case_results.csv`.
-
-Đây là phân tích **định tính thăm dò**; hai câu hỏi DBB và BBQ không mặc nhiên là cặp đối chứng tương đương.
-
-## 9. Kiểm tra kết quả batch
-
-Để kiểm tra một file CSV kết quả DBB (thay `TEN_FILE.csv` bằng tên thật):
-
-```powershell
-python -c "import pandas as pd; d=pd.read_csv('Results/batch_demo/TEN_FILE.csv'); print('Tong dong:',len(d)); print('Cap model-row duy nhat:',len(d.drop_duplicates(['model','row_id']))); print(d.groupby('model').size().to_string())"
+```text
+http://localhost:8501
 ```
 
-**Phân biệt:** tổng số dòng đã lưu, số câu trả lời A/B hợp lệ và **điểm bias chính thức** là ba khái niệm khác nhau. Không kết luận một model thiên kiến hơn model khác chỉ từ `ans1_rate`.
+Nếu cổng 8501 bận, xem URL mà terminal in ra. Không tự suy đoán cổng nếu Streamlit báo khác.
 
-## 10. Cách đưa dự án lên GitHub
+### Bước 4 — Chọn một trong ba thực nghiệm
 
-> Các lệnh dưới đây dành cho **người tạo repository**. Không nhập nguyên văn URL ví dụ; thay bằng URL GitHub thật của nhóm.
+Menu trên cùng của website gồm: **1 · Đánh giá DBB**, **2 · So sánh benchmark**, **3 · DBB vs BBQ**.
 
-### Bước A — Tạo repository
+### Bước 5 — Dừng website
 
-Vào GitHub → **New repository**, đặt tên ví dụ `dbb-benchmark`, tạo repository **trống** (không cần khởi tạo README trên GitHub nếu local đã có).
+Quay về terminal chạy Streamlit và nhấn **Ctrl+C**. Nếu worker nền còn chạy, cần kiểm tra và dừng worker riêng trước khi thay source code.
 
-### Bước B — Commit source code từ máy của bạn
+## 10. Thực nghiệm 1 — DBB
 
-Mở PowerShell tại thư mục gốc dự án:
+### Mục tiêu
 
-```powershell
-git init
-git branch -M main
-git add README.md .gitignore requirements.txt setup_ollama_models.ps1 pull_models_later.ps1 Code/
-git status
-git commit -m "docs: add setup guide and recovered DBB source"
+Cho nhiều model chọn giữa hai phương án tiếp nối (`ans1`, `ans2`) trên cùng tập câu hỏi DBB, lưu từng câu trả lời để phân tích.
+
+### Các bước thao tác trên website
+
+1. Chọn **1 · Đánh giá DBB**.
+2. Ở **Chọn dữ liệu**, chọn **Theo số lượng** để lấy mẫu phân tầng, hoặc **Theo khoảng dòng** để chạy một dải `row_id` liên tiếp.
+3. Thử **20 dòng** trước, **không chọn `0 = toàn bộ`** ở lần chạy đầu.
+4. Ở **Chọn model**, chọn 1 model để thử; khi ổn mới chọn cả 8 model.
+5. Nhấn **▶ Chạy / tiếp tục và xem biểu đồ**.
+6. Theo dõi thanh tiến độ, bảng `Đã ghi`, `Hợp lệ`, `Chọn ans1 (%)`.
+7. Khi chạy xong, nhấn **⬇ Tải CSV** để tải dữ liệu từng lượt.
+8. Nếu bị lỗi, mở phần **Log chạy** ở cuối tab.
+
+### Ví dụ
+
+- 20 dòng × 1 model = 20 lượt.
+- 20 dòng × 8 model = **160 lượt**.
+- Nếu máy chạy CPU, thời gian có thể khá lâu. Không chạy nhiều worker trùng cấu hình đồng thời.
+
+### File được tạo
+
+```text
+Results/batch_demo/raw_<run_id>.csv
+Results/batch_demo/status_<run_id>.json
+Results/batch_demo/worker.log
 ```
 
-Lệnh `git add` trên **chỉ thêm source và tài liệu**; không thêm model hoặc CSV. Nếu muốn commit dữ liệu, phải xem xét giấy phép, kích thước và Git LFS riêng.
+### Ý nghĩa biểu đồ
 
-### Bước C — Kết nối GitHub và push
+- **Đã ghi**: số bản ghi `(model, row_id)` đã có trong CSV.
+- **Hợp lệ**: số đáp án parse được thành `ans1` hoặc `ans2` và không báo lỗi.
+- **Chọn ans1 (%)**: tỷ lệ chọn `ans1` **trong các câu hợp lệ**.
+- **Theo nhóm thiên kiến**: chia tỷ lệ chọn `ans1` theo `bias_type`.
 
-```powershell
-git remote add origin https://github.com/<OWNER>/<REPOSITORY>.git
-git push -u origin main
+**Không kết luận model ít thiên kiến hơn chỉ vì `ans1_rate` thấp hơn.** Cần xác minh nhãn, đối chứng nhân khẩu học và công thức metric DBB chính thức.
+
+## 11. Thực nghiệm 2 — So sánh benchmark
+
+### Mục tiêu
+
+Chạy **một model** trên các mẫu của DBB, BBQ, CrowS-Pairs và StereoSet để khảo sát cách model trả lời trên nhiều bộ dữ liệu.
+
+### Các bước
+
+1. Chọn **2 · So sánh benchmark**.
+2. Chọn **Model đánh giá**.
+3. Chọn **Số mẫu tối đa cho mỗi benchmark** (nên thử 5–20 trước).
+4. Giữ `Random seed = 42` để việc lấy mẫu có thể lặp lại.
+5. Chọn benchmark muốn chạy.
+6. Xem trạng thái đọc dữ liệu. Nếu thiếu CrowS-Pairs/StereoSet, chạy `download_benchmarks.py`.
+7. Nhấn **▶ Chạy so sánh benchmark**.
+8. Chờ hoàn tất, xem bảng kết quả và tải CSV.
+
+### File kết quả
+
+```text
+Results/experiment2/comparison_<timestamp>.csv
 ```
 
-Nếu repository đã có `origin`, kiểm tra `git remote -v` thay vì thêm lần nữa. GitHub có thể yêu cầu đăng nhập qua trình duyệt hoặc credential manager.
+### Cách đọc các chỉ số
 
-### Bước D — Thành viên khác clone và chạy
+| Benchmark | Chỉ số code hiện tính | Diễn giải |
+|---|---|---|
+| DBB | Tỷ lệ chọn `ans1` | Chỉ số lựa chọn, không phải bias score |
+| BBQ | Accuracy | Tỷ lệ chọn đáp án đúng theo `label` |
+| CrowS-Pairs | Tỷ lệ chọn câu `sent_more` | Proxy lựa chọn câu stereotype, không phải likelihood metric chuẩn |
+| StereoSet | Tỷ lệ chọn câu `stereotype` | Proxy lựa chọn A/B, không phải StereoSet score chuẩn |
 
-```powershell
-git clone https://github.com/<OWNER>/<REPOSITORY>.git
-cd <REPOSITORY>
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install -r requirements.txt
+**Cảnh báo:** Không vẽ biểu đồ xếp hạng 4 benchmark theo một phần trăm chung rồi gọi đó là “mức độ thiên kiến”. Bốn tỷ lệ đo những khái niệm khác nhau.
+
+**Hạn chế vận hành:** Thực nghiệm 2 chạy ngay trong tiến trình Streamlit, không có worker nền/resume giống Thực nghiệm 1. Kết quả được ghi ra file sau khi vòng chạy kết thúc; tránh chọn số mẫu quá lớn.
+
+## 12. Thực nghiệm 3 — DBB và BBQ
+
+### Mục tiêu
+
+Xem **một tình huống DBB** và **một câu hỏi BBQ** cạnh nhau, gửi cho **cùng một model**, phục vụ thảo luận định tính.
+
+### Các bước
+
+1. Chọn **3 · DBB vs BBQ**.
+2. Chọn model.
+3. Chọn nhóm thiên kiến DBB và `row_id` muốn xem.
+4. Đọc `Context`, `ans1`, `ans2`, `target`, `explanation`.
+5. Tại mục BBQ, **upload file CSV BBQ** từ máy.
+6. Nếu có, lọc `category` và `context_condition`.
+7. Chọn một câu hỏi BBQ.
+8. Nhấn **▶ Chạy cả hai trường hợp trên cùng model**.
+9. Xem đáp án DBB, đáp án BBQ, độ đúng BBQ, thời gian và phản hồi thô.
+10. Kiểm tra lịch sử kết quả phía dưới.
+
+### File kết quả
+
+```text
+Results/experiment3/case_results.csv
 ```
 
-Sau đó thực hiện tiếp **bước 5 → 8** của README và tự chuẩn bị dữ liệu/model còn thiếu.
+**Lưu ý:** Hai tình huống được chọn độc lập, không được coi là một cặp counterfactual. Tab này là phân tích tình huống, không chứng minh quan hệ nhân quả hoặc độ công bằng tổng quát của model.
 
-### Bước E — Quy trình cộng tác cơ bản
+## 13. Chạy worker bằng dòng lệnh
+
+Hữu ích khi muốn chạy không qua Streamlit, kiểm tra lỗi hoặc bổ sung các lượt thiếu.
+
+### Chạy 20 dòng, 1 model
 
 ```powershell
-git pull origin main
-git switch -c feature/ten-tinh-nang
-# Sửa code, kiểm tra trước khi commit
-git add Code/ README.md
-git commit -m "feat: mo ta thay doi"
-git push -u origin feature/ten-tinh-nang
+python Code\dbb_batch_worker.py --limit 20 --models qwen3:0.6b
 ```
 
-Tạo **Pull Request** từ branch tính năng vào `main` để thành viên khác review. Tránh đẩy thẳng thay đổi lớn lên `main`.
+### Chạy 20 dòng, 8 model
 
-## 11. Lỗi thường gặp
+```powershell
+python Code\dbb_batch_worker.py --limit 20 --models qwen3:0.6b qwen3:1.7b llama3.2:1b gemma3:1b phi3:mini smollm2:1.7b stablelm2:1.6b tinyllama:1.1b
+```
 
-| Hiện tượng | Cách xử lý |
+### Chạy theo khoảng dòng
+
+```powershell
+python Code\dbb_batch_worker.py --limit 0 --start 0 --end 19 --models qwen3:0.6b
+```
+
+`--end` là **chỉ số bao gồm**; `0..19` có 20 dòng.
+
+### Tăng timeout khi model chạy chậm
+
+```powershell
+python Code\dbb_batch_worker.py --limit 20 --models phi3:mini --timeout 240
+```
+
+### Tiếp tục kết quả cũ
+
+Chạy lại **đúng tập dòng** và **đúng dataset**. Worker kiểm tra các cặp `(model, row_id)` đã thành công và bỏ qua chúng; các lượt báo lỗi có thể được thử lại. Không xóa CSV cũ.
+
+**Lưu ý về `run_id`:** `--limit 20` và `--limit 0 --start 0 --end 19` tạo hai tập mẫu/chữ ký khác nhau. Đừng dùng hai lệnh thay thế nhau để tiếp tục một batch.
+
+## 14. Giải thích dữ liệu đầu ra và kiểm chứng
+
+### 14.1 CSV Thực nghiệm 1
+
+| Cột | Ý nghĩa |
 |---|---|
-| `python` không được nhận diện | Cài Python và kiểm tra PATH; mở terminal mới |
-| Không kích hoạt được `.venv` | Dùng `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` hoặc gọi Python trong `.venv` trực tiếp |
-| Website báo không kết nối Ollama | Mở Ollama, thử `ollama list` và kiểm tra API `http://127.0.0.1:11434` |
-| Không thấy model trong website | Tải bằng `ollama pull ...`, sau đó tải lại website |
-| Model chạy chậm | Giảm số dòng, chỉ chọn 1 model, kiên nhẫn với CPU |
-| Thiếu `CrowS-Pairs.csv` hoặc `StereoSet.csv` | Chạy `python Code\download_benchmarks.py` |
-| Batch bị ngắt | Kiểm tra `Results/batch_demo/worker.log` và CSV; tránh mở nhiều worker cùng cấu hình |
-| `WinError 5` khi ghi status | Đảm bảo dùng worker bản mới và tránh chạy trùng tiến trình; kiểm tra quyền ghi thư mục |
-| Git từ chối file quá lớn | Kiểm tra `.gitignore`, không commit `llm/`, `Results/`, `Dataset/*.csv` |
+| `run_id` | Mã tập dữ liệu/mẫu chạy |
+| `model` | Tên model Ollama |
+| `row_id` | Vị trí dòng trong DBB gốc, bắt đầu từ 0 |
+| `bias_type` | Nhóm thiên kiến |
+| `target` | Nhóm/đối tượng được đề cập |
+| `label` | Nhãn dataset gốc; **không tự suy diễn ý nghĩa** |
+| `answer` | Chữ A/B được parse từ phản hồi |
+| `selected_original` | Đáp án gốc `ans1`/`ans2` sau khi xử lý đảo A/B |
+| `raw` | Phản hồi nguyên bản của model |
+| `seconds` | Thời gian xử lý lượt |
+| `error` | Lỗi request nếu có |
 
-## 12. Quy ước nghiên cứu và giới hạn
+### 14.2 Kiểm tra số lượng, trùng lặp và đáp án hợp lệ
 
-- **DBB**: bộ dữ liệu đánh giá thiên kiến liên quan các nhóm nhân khẩu học.
-- **BBQ, CrowS-Pairs, StereoSet**: các benchmark khác, có cách xây dựng và tính điểm riêng.
-- `ans1_rate` là tỷ lệ chọn đáp án `ans1` trong mẫu chạy, **không phải điểm thiên kiến chính thức**.
-- Muốn tái lập kết quả nghiên cứu cần kiểm tra thiết kế cặp đối chứng, cách tính điểm theo bài báo, số lần chạy, lựa chọn mẫu và phương pháp thống kê.
-- Lưu rõ phiên bản model, số dòng, seed, cấu hình suy luận và thời gian chạy khi viết báo cáo.
+Thay tên CSV trong lệnh bằng file thật trong `Results/batch_demo/`:
 
-**Tham khảo bài báo DBB:** <https://aclanthology.org/2025.findings-emnlp.76/>
+```powershell
+Get-ChildItem .\Results\batch_demo\raw_*.csv | Sort-Object LastWriteTime -Descending
+```
+
+Ví dụ kiểm tra file gần nhất bằng một đoạn Python trong PowerShell:
+
+```powershell
+python -c "import pandas as pd,pathlib; p=max(pathlib.Path('Results/batch_demo').glob('raw_*.csv'),key=lambda x:x.stat().st_mtime); d=pd.read_csv(p); print('File:',p); print('Rows:',len(d)); print('Unique model-row:',len(d.drop_duplicates(['model','row_id']))); print('Valid A/B:',d['selected_original'].isin(['ans1','ans2']).sum()); print(d.groupby('model').size().to_string())"
+```
+
+**Phân biệt:** `160 dòng` ≠ `160 đáp án hợp lệ`. Phải kiểm tra `error` và `selected_original`.
+
+### 14.3 Ví dụ thực tế từ quá trình phát triển
+
+Một lượt chạy thử đã ghi **160 dòng duy nhất** cho **8 model × 20 dòng**. Tuy nhiên, các file kết quả đó **không nằm trong bản source khôi phục**. Thành viên mới phải chạy lại trên máy của mình nếu cần tái tạo kết quả.
+
+### 14.4 Đảm bảo tính tái lập
+
+Khi báo cáo thí nghiệm, lưu ít nhất: phiên bản Git commit, tên/tag model, phiên bản Ollama, phiên bản dataset, `row_id`, seed, prompt, thông số inference, thời điểm chạy và định nghĩa metric. Việc dùng `temperature=0` không tự đảm bảo tuyệt đối mọi máy đều cho đáp án giống nhau.
+
+## 15. Các script bổ trợ và phụ thuộc
+
+### 15.1 `compare_models.py`
+
+Script CLI khác với batch worker chính. Có thể chạy:
+
+```powershell
+python Code\compare_models.py --help
+```
+
+Các tùy chọn quan trọng theo source: `--per-group`, `--max-new`, `--models`, `--timeout`, `--report-only`. Script này có cách chọn mẫu và đường dẫn kết quả riêng, **không tự động tương thích `run_id` của Thực nghiệm 1**.
+
+### 15.2 `dbb_demo.py` và `experiment3_dbb_bbq.py`
+
+Đây là các app Streamlit bổ trợ. Chỉ dùng khi cần nghiên cứu code cũ hoặc kiểm thử độc lập:
+
+```powershell
+python -m streamlit run Code\dbb_demo.py
+```
+
+```powershell
+python -m streamlit run Code\experiment3_dbb_bbq.py
+```
+
+### 15.3 `dbb_pipeline.py` — **Groq**, không phải Ollama
+
+Source này import `groq`, `python-dotenv`, `truststore` và dùng Groq API. Các thư viện đó **không nằm trong `requirements.txt` website chính**.
+
+Nếu thành viên có nhu cầu chạy luồng này, cài thêm:
+
+```powershell
+python -m pip install groq python-dotenv truststore
+```
+
+Sau đó xem trợ giúp:
+
+```powershell
+python Code\dbb_pipeline.py --help
+```
+
+Cần thiết lập API key hợp lệ theo hướng dẫn Groq; **không đưa API key vào code, `.env` lên Git**. Không chạy script này nếu mục tiêu chỉ là chạy model Ollama local.
+
+## 16. Lỗi thường gặp và cách xử lý
+
+| Triệu chứng | Nguyên nhân có thể | Cách xử lý |
+|---|---|---|
+| `python: command not found` | Chưa cài Python/PATH | Cài Python, mở terminal mới |
+| Không kích hoạt được `.venv` | Execution Policy | `Set-ExecutionPolicy -Scope Process Bypass` rồi activate |
+| `ModuleNotFoundError: streamlit` | Chưa cài requirements hoặc sai môi trường | Kích hoạt `.venv`; cài lại `requirements.txt` |
+| Website không thấy model | Ollama chưa chạy hoặc model chưa tải | Mở Ollama, `ollama list`, tải model |
+| Model lưu ổ C thay vì `llm/` | Server Ollama chưa nhận `OLLAMA_MODELS` | Đặt biến môi trường User và khởi động lại Ollama |
+| Thiếu `Bias-Dataset.csv` | Dataset bị `.gitignore` | Bổ sung file đúng tên vào `Dataset/` |
+| Thiếu CrowS-Pairs/StereoSet | Chưa tải benchmark | `python Code\download_benchmarks.py` |
+| Batch chậm/đứng | CPU chậm, model load hoặc request timeout | Thử 1 model, 5–20 dòng; kiểm tra `ollama ps` và log |
+| `WinError 5` ở `status_*.json` | Windows khóa file trạng thái | Dùng worker có xử lý retry, tránh worker trùng |
+| `COMPLETED 160/20` | Counter log tính cả kết quả cũ trong CSV | Kiểm tra số cặp duy nhất bằng pandas |
+| CSV có 160 dòng nhưng ít valid | Model trả lời sai định dạng hoặc lỗi request | Kiểm tra `raw`, `error`, `selected_original` |
+| Git báo conflict `README.md` | README local/GitHub khác nhau | Giải quyết conflict rồi commit merge; không force push |
+| GitHub không có `llm/`/dataset | Bị `.gitignore` | Đây là thiết kế; tải dữ liệu/model riêng |
+
+### Kiểm tra worker đang chạy trên Windows
+
+```powershell
+Get-CimInstance Win32_Process -Filter "name='python.exe'" | Select-Object ProcessId,CommandLine
+```
+
+### Xem log gần nhất
+
+```powershell
+Get-Content .\Results\batch_demo\worker.log -Tail 40
+```
+
+Không xóa `Results/` chỉ để khắc phục lỗi hiển thị. CSV có thể chứa các lượt đã chạy mất nhiều thời gian.
+
+## 17. Git/GitHub: quy trình cộng tác
+
+Repository: <https://github.com/Bao-Thanh/dbb-benchmark>
+
+### 17.1 Nhánh chính
+
+Nhóm sử dụng **`main`** làm nhánh mặc định. Kiểm tra:
+
+```bash
+git branch
+git status
+git remote -v
+```
+
+### 17.2 Cập nhật code mới nhất
+
+Trước khi sửa code:
+
+```bash
+git switch main
+git pull --ff-only origin main
+```
+
+Nếu lệnh pull báo không thể fast-forward, hỏi thành viên quản lý trước khi merge/rebase để tránh mất thay đổi.
+
+### 17.3 Tạo nhánh tính năng
+
+```bash
+git switch -c feat/improve-batch-progress
+```
+
+Sửa code → chạy thử → xem diff:
+
+```bash
+git status
+git diff
+```
+
+### 17.4 Commit và push
+
+```bash
+git add Code/dbb_batch_worker.py README.md
+git commit -m "fix: improve DBB batch progress"
+git push -u origin feat/improve-batch-progress
+```
+
+Sau đó mở **Pull Request** từ nhánh tính năng vào `main` trên GitHub để thành viên khác review. Không cần commit trực tiếp lên `main` cho mọi thay đổi.
+
+### 17.5 Khi chỉ sửa README
+
+```bash
+git add README.md
+git commit -m "docs: expand setup and source code guide"
+git push origin main
+```
+
+Lệnh này chỉ phù hợp nếu nhóm cho phép commit trực tiếp vào `main` và local đã đồng bộ với remote.
+
+### 17.6 Không được commit
+
+- `llm/`: model weights Ollama.
+- `Results/`: CSV chạy, log, trạng thái.
+- `.venv/`, `__pycache__/`.
+- `.env`, API key, token, mật khẩu.
+- Dataset dung lượng lớn hoặc chưa xác nhận quyền phân phối.
+
+Trước khi commit:
+
+```bash
+git status --short
+git diff --cached --stat
+```
+
+**Lưu ý:** `.gitignore` không tự bỏ theo dõi các file đã từng commit. Nếu trước đó đã lỡ commit file lớn, cần xử lý lịch sử Git riêng; đừng tự ý force push lên repo nhóm.
+
+## 18. Giới hạn nghiên cứu và checklist bàn giao
+
+### 18.1 Giới hạn phương pháp
+
+1. Tỷ lệ chọn `ans1` không tương đương điểm bias chính thức của DBB.
+2. Một lần chọn A/B không đủ để kết luận mô hình thiên kiến với nhóm người nào.
+3. Thực nghiệm 2 đang dùng các **proxy** khác nhau; không được xem là bảng xếp hạng công bằng giữa bốn benchmark.
+4. Thực nghiệm 3 là đối chiếu tình huống, không phải đánh giá định lượng trên cặp đối chứng đã ghép.
+5. Các mô hình được chạy bằng inference local, không có quá trình training/fine-tuning trong luồng chính.
+6. Code được khôi phục từ các phiên bản đã chia sẻ, cần review/test lại trước khi công bố kết quả khoa học.
+
+### 18.2 Checklist cho thành viên mới
+
+- [ ] Clone đúng repo và đang ở nhánh `main`.
+- [ ] Có Python, Git, Ollama và VS Code.
+- [ ] Tạo `.venv` và cài `requirements.txt`.
+- [ ] Thiết lập `OLLAMA_MODELS` trỏ tới `llm/`.
+- [ ] Tải ít nhất một model; `ollama list` thấy model.
+- [ ] Có `Dataset/Bias-Dataset.csv` đúng cột.
+- [ ] Chạy được `python -m streamlit run Code\dbb_web.py`.
+- [ ] Thử Thực nghiệm 1 với 5–20 dòng và một model.
+- [ ] Kiểm tra CSV, số cặp duy nhất và số đáp án hợp lệ.
+- [ ] Tải thêm BBQ/CrowS-Pairs/StereoSet nếu cần Thực nghiệm 2/3.
+- [ ] Không commit model, kết quả, secret hoặc dataset chưa được phép phân phối.
+- [ ] Ghi rõ phiên bản model, dataset, Git commit và metric khi báo cáo.
 
 ---
 
-**Ghi chú phục hồi:** README này mô tả cấu trúc của `DBB_Benchmark_Full_Source_Recovery.zip` được khôi phục ngày 24/10/2026. Model Ollama và file kết quả 160 lượt từ máy cũ không có trong gói. Các bước chạy là hướng dẫn triển khai, không phải xác nhận đã kiểm thử end-to-end trên máy mới.
+## Ghi chú bảo trì tài liệu
+
+- **Entrypoint chính:** `Code/dbb_web.py`.
+- **Worker chính:** `Code/dbb_batch_worker.py`.
+- **Script tải benchmark:** `Code/download_benchmarks.py`.
+- **Script tải model:** `Code/download_models.ps1` (phải được thêm vào repository nếu hiện chưa có).
+- **Trạng thái xác minh:** Nội dung mô tả được đối chiếu với source khôi phục hiện có; các lệnh cài đặt và inference chưa được thực thi end-to-end trên máy của từng thành viên.
+- Khi đổi tên file, schema CSV, giao diện hoặc công thức đánh giá, hãy cập nhật README trong cùng Pull Request.
