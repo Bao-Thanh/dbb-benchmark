@@ -42,8 +42,6 @@ Website hiện có ba mục:
 | **2 — So sánh benchmark** | Thăm dò DBB, BBQ, CrowS-Pairs, StereoSet trên cùng một model | CSV so sánh, bảng tỷ lệ | Các tỷ lệ có định nghĩa khác nhau, không được so trực tiếp như một thước đo |
 | **3 — DBB vs BBQ** | Quan sát hai trường hợp cụ thể với cùng model | CSV phân tích tình huống | Hai ví dụ không nhất thiết là cặp đối chứng tương đương |
 
-**Quan trọng:** Đây là source khôi phục từ các phiên bản code trong cuộc trò chuyện. Chưa xác nhận mọi luồng chạy thành công trên mọi máy. Dự án **chạy suy luận (inference)**, **không huấn luyện/fine-tune** LLM. Chưa phải bản tái lập đầy đủ phương pháp và thước đo chính thức của bài báo DBB.
-
 Tài liệu tham khảo chính: [DBB — Findings of EMNLP 2025](https://aclanthology.org/2025.findings-emnlp.76.pdf).
 
 ## 2. Kiến trúc và luồng dữ liệu
@@ -102,8 +100,6 @@ dbb-benchmark/
 ├── README.md                      # File tài liệu này khi đưa lên repo
 └── .gitignore
 ```
-
-> **Chú ý:** Cấu trúc trên mô tả bộ source khôi phục và các script đã tạo thêm trong cuộc trò chuyện. Nếu repository thực tế chưa có một file, cần bổ sung file đó trước khi chạy lệnh liên quan. Git không theo dõi thư mục trống; có thể thêm `.gitkeep` nếu cần.
 
 ### 3.1 `Code/dbb_web.py` — điểm khởi chạy chính
 
