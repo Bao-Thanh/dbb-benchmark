@@ -1,0 +1,31 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local IDE / secrets
+.vscode/
+.idea/
+.env
+.env.*
+!.env.example
+
+# Ollama model weights and local state
+llm/
+
+# Generated outputs
+Results/
+*.log
+
+# Large datasets: obtain separately and check licenses before publishing
+Dataset/*.csv
+Dataset/*.json
+Dataset/*.jsonl
+
+# OS
+.DS_Store
+Thumbs.db
