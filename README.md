@@ -2,8 +2,6 @@
 
 Dự án thử nghiệm đánh giá **thiên kiến (bias) của mô hình ngôn ngữ lớn (LLM)** trên máy cá nhân bằng **Ollama** và **Streamlit**. Website có ba phần: (1) đánh giá trên DBB, (2) so sánh thăm dò bốn benchmark, và (3) xem các trường hợp DBB và BBQ cạnh nhau.
 
-> **Trạng thái dự án:** Đây là bản **khôi phục source code từ các file còn lưu trong cuộc trò chuyện**, không phải bản sao đầy đủ từ máy cũ. Chưa xác nhận chạy inference thành công trên máy mới. Kết quả 160 lượt trên máy cũ **không nằm trong gói khôi phục**. Các biểu đồ lựa chọn A/B hiện là **chỉ số thăm dò**, không phải điểm thiên kiến chính thức của bài báo DBB.
-
 ## 1. Yêu cầu trước khi bắt đầu
 
 - Windows 10/11 và **PowerShell**.
