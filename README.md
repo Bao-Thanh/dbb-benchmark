@@ -68,6 +68,8 @@ Các chỉ số này không nên xem như cùng một thang bias. Vị trí đá
 
 **Thực nghiệm 2:** BBQ hiện đo accuracy chứ không phải bias score BBQ; CrowS-Pairs và StereoSet dùng forced-choice proxy, không phải likelihood hoặc ICAT chuẩn. **Thực nghiệm 3:** ví dụ DBB/BBQ chỉ minh họa định tính, hai dataset không có cặp đối chứng tương đương trực tiếp.
 
+**TinyLlama và parser:** từ bản vá 2026-11-07, prompt Thực nghiệm 1 chỉ nêu **A/B** (không nhắc C). Parser chấp nhận lựa chọn A/B được khai báo rõ như `Option: A`, `Option B is correct`, kể cả có giải thích; vẫn loại phản hồi mơ hồ, lựa chọn C và prompt echo. `parser_reason` trong CSV phân biệt `single_explicit_choice` và `explicit_choice_with_extra_text`. **Không tự tính lại kết quả run cũ**. Với model có tỷ lệ INVALID cao, kiểm tra CSV `raw` và `parser_reason` trước khi kết luận về thiên kiến.
+
 ## 5. Dữ liệu, audit và kiểm thử
 
 Các run mới lưu **append-only** trong `Results/explainable/experiment1/<run_id>/`: `manifest.json`, `attempts.jsonl`, `status.json`, `worker.log`. CSV và PNG được kết xuất từ dữ liệu đã ghi. Các run cũ/CSV kết quả trước đây **không bị xóa**, dù UI Thực nghiệm 1 không còn mục “Lần chạy đã lưu”. Bộ lưu trữ giữ parser reason, option mapping, prompt, raw, model, thời gian, seed và trạng thái.
