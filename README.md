@@ -1,102 +1,80 @@
 # DBB · Explainable AI Research Lab
 
-Website nghiên cứu thiên kiến xã hội của LLM chạy bằng **Python, Streamlit, Ollama cục bộ**. Tập trung **giải thích được** từ câu hỏi → prompt → phản hồi thô → parser → phép tính → giới hạn kết luận. Không cần API trả phí, không huấn luyện model.
+Website đánh giá thiên kiến xã hội trong LLM sử dụng **Streamlit + Ollama cục bộ**. Ba thực nghiệm chạy độc lập hoặc chung qua một website. Không huấn luyện mô hình, không cần API trả phí.
 
-**Bài báo chính:** Pan et al. (2025), [What's Not Said Still Hurts: A Description-Based Evaluation Framework for Measuring Social Bias in LLMs](https://aclanthology.org/2025.findings-emnlp.76/) (Findings of EMNLP 2025). [Dataset/paper code của tác giả](https://github.com/JP-25/Description-based-Bias-Benchmark).
+**Bài báo gốc:** Pan et al. (2025), [What's Not Said Still Hurts: A Description-Based Evaluation Framework for Measuring Social Bias in LLMs](https://aclanthology.org/2025.findings-emnlp.76/) — Findings of EMNLP 2025. [Dữ liệu của tác giả](https://github.com/JP-25/Description-based-Bias-Benchmark).
 
-## Ba thực nghiệm
+## 1. Ba thực nghiệm
 
-| Trang | Câu hỏi nghiên cứu | Kết quả hiển thị |
+| Trang | Mục đích | Kết quả |
 |---|---|---|
-| **1 — DBB** | Lựa chọn tiếp nối thay đổi thế nào khi danh tính nhân khẩu học trong một cặp đối chứng thay đổi? | Prompt + raw + parser, **S** khi mỗi câu có ≥10 lượt hợp lệ, số cặp S≥20, số invalid |
-| **2 — 4 benchmark** | Vì sao phải dùng nhiều phương pháp đánh giá thiên kiến? | DBB lựa chọn (thăm dò); BBQ accuracy; CrowS-Pairs và StereoSet lựa chọn stereotype (proxy), **không** so các % như cùng một bias score |
-| **3 — DBB vs BBQ** | Model phản ứng ra sao trước một trường hợp DBB và một trường hợp BBQ cùng chủ đề? | Từng tình huống, dự đoán của người xem, model trả lời, prompt thực, raw, cách đọc kết quả |
+| **1 — Đánh giá DBB** | Chọn nhiều model, lấy cùng tập câu hỏi đối chứng, đánh giá tuần tự | Hai biểu đồ, CSV chi tiết/tổng hợp, PNG, ZIP |
+| **2 — Bốn benchmark** | So sánh cách đặt câu hỏi DBB, BBQ, CrowS-Pairs, StereoSet | Các chỉ số thăm dò khác định nghĩa, không xếp hạng sai |
+| **3 — DBB vs BBQ** | Xem trường hợp cụ thể, dự đoán và truy vết phản hồi | Prompt, raw answer, parser, nhãn và giới hạn diễn giải |
 
-Các file `Code/experiment1.py`, `Code/experiment2.py`, `Code/experiment3.py` là **điểm chạy riêng**; `Code/dbb_web.py` import lại cả ba. Tất cả dùng chung `dbb_data.py`, `dbb_inference.py`, `dbb_metrics.py`, `dbb_runner.py`, `dbb_storage.py`, `dbb_ui.py`.
+Các entrypoint \`Code/experiment1.py\`, \`Code/experiment2.py\`, \`Code/experiment3.py\` có thể mở riêng. \`Code/dbb_web.py\` tổng hợp cả ba. Module dùng chung: \`dbb_data\`, \`dbb_inference\`, \`dbb_metrics\`, \`dbb_runner\`, \`dbb_storage\`. Thực nghiệm 1 dùng thêm \`dbb_compact_worker.py\` (xử lý nền) và \`dbb_compact_report.py\` (báo cáo).
 
-## Cấu trúc
+## 2. Chuẩn bị Windows
 
-```text
-Code/
-  dbb_web.py             # 1 server tích hợp 3 thực nghiệm
-  experiment1.py         # chạy riêng DBB
-  experiment2.py         # chạy riêng 4 benchmark
-  experiment3.py         # chạy riêng phân tích định tính
-  dbb_data.py            # dataset + kiểm chứng cặp DBB
-  dbb_inference.py       # Ollama API + cấu hình, đảo A/B
-  dbb_metrics.py         # parser chặt, S, các chỉ số thăm dò
-  dbb_runner.py          # tác vụ, chạy, lưu và tiếp tục
-  dbb_storage.py         # manifest + JSONL append-only + lock
-  dbb_ui.py              # truy vết, đọc lại CSV cũ
-  build_dbb_pair_index.py # công cụ audit độc lập, không chạy tự động
-Dataset/                  # file gốc trên máy, không thay đổi
-Results/                  # file cũ và explainable/run-id mới
-llm/                      # local Ollama models, không đưa lên GitHub
-tests/
-requirements.txt
-README.md
-.gitignore
-```
+Mở PowerShell **tại thư mục gốc** dự án, nơi có \`Code/\`, \`Dataset/\` và \`requirements.txt\`:
 
-## Cài đặt trên Windows PowerShell
-
-Mở PowerShell tại **thư mục gốc** repository (nơi có `Code/`, `Dataset/`, `requirements.txt`):
-
-```powershell
-cd 'D:\UIT\Năm 1\HK 1\Thuật toán và lý thuyết máy học\Thi\Giữa kỳ\dbb-benchmark'
+\`\`\`powershell
+git pull origin main
 py -3 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
 ollama list
-```
+\`\`\`
 
-Nếu PowerShell từ chối kích hoạt venv, dùng `Set-ExecutionPolicy -Scope Process Bypass` trong terminal hiện tại rồi chạy lại `Activate.ps1`. Giữ Ollama chạy với API tại `http://127.0.0.1:11434`; website chỉ hiển thị **model đã cài**, không tự tải lại. Kiểm tra `http://127.0.0.1:11434/api/tags` nếu không thấy model.
+Nếu đã có \`.venv\`, bỏ qua lệnh tạo môi trường. Giữ Ollama chạy tại \`http://127.0.0.1:11434\`; các model phải được cài sẵn. Không tự tải lại model.
 
-Đặt đúng tên file dữ liệu: `Dataset/Bias-Dataset.csv`, `Dataset/BBQ-Dataset.csv`, `Dataset/CrowS-Pairs.csv`, `Dataset/StereoSet.csv`. Repo có thể đã theo dõi một số file dataset từ trước; bản cập nhật này không push thêm hoặc sửa dataset.
+Đặt dữ liệu theo đúng tên: \`Dataset/Bias-Dataset.csv\`, \`Dataset/BBQ-Dataset.csv\`, \`Dataset/CrowS-Pairs.csv\`, \`Dataset/StereoSet.csv\`. **Không đưa dataset lớn, model weights, token bí mật hoặc Results lên GitHub.** Dữ liệu DBB cần đúng bản đã audit. Cơ chế SHA256 chấp nhận *chỉ* khác biệt xuống dòng Windows CRLF→LF nếu toàn bộ byte sau chuẩn hóa khớp bản audit; không chấp nhận thay đổi nội dung/thứ tự.
 
-**Website tổng hợp** (1 server, **localhost:8500**):
+**Website chính (một server, localhost:8500):**
 
-```powershell
+\`\`\`powershell
 python -m streamlit run Code/dbb_web.py --server.address 127.0.0.1 --server.port 8500
-```
+\`\`\`
 
-**Chạy riêng** một thực nghiệm (mỗi lệnh chỉ mở một Streamlit server, không phải chạy đồng thời cả ba):
+**Chạy riêng (không cần chạy đồng thời):**
 
-```powershell
+\`\`\`powershell
 python -m streamlit run Code/experiment1.py --server.port 8501
 python -m streamlit run Code/experiment2.py --server.port 8502
 python -m streamlit run Code/experiment3.py --server.port 8503
-```
+\`\`\`
 
-Mở `http://localhost:8500` với website tổng hợp. Muốn thử nhanh: chọn model `qwen3:0.6b` **nếu có sẵn**, 1–2 cặp trong thực nghiệm 1, chế độ **Demo nhanh**; chương trình **không tự chạy** khi mở trang.
+## 3. Thực nghiệm 1 — Cách dùng giao diện đơn giản
 
-## Phương pháp và giới hạn (cần hiểu để bảo vệ)
+1. Chọn **một hoặc nhiều model Ollama**, hoặc nhấn **Chọn tất cả model**. Chọn 10, 20, 50, 100, 200, 500 câu hoặc số **chẵn** tùy chỉnh, rồi chọn nhóm nhân khẩu học (hay Tất cả).
+2. Nhấn **▶ Bắt đầu đánh giá**. **Mỗi lần nhấn tạo một \`run_id\` mới**. Không có trình chọn run cũ, không tự chạy lại khi Streamlit rerun. Mọi model sử dụng **cùng một tập câu**, cùng seed, prompt và lịch trình đảo A/B; xử lý tuần tự để giảm RAM. Có nút **■ Dừng sau lượt hiện tại**, tiến độ và tên model đang xử lý. Hệ thống lưu từng phản hồi trước khi qua câu tiếp theo.
+3. Khi xong hoặc dừng, xem **hai biểu đồ** và tải **CSV chi tiết, CSV tổng hợp, hai PNG độ phân giải cao hoặc ZIP**. Báo cáo dừng giữa chừng được gắn nhãn **INCOMPLETE**; phản hồi API lỗi/INVALID không được xem là lựa chọn hợp lệ. Không có số liệu mẫu giả được dùng cho báo cáo.
 
-**DBB:** Dữ liệu được audit có 77.350 câu hỏi = 1.547 khối × 50 câu; áp dụng mẫu đối chứng theo paper để dựng **103.649 cặp đầu vào** (không phải 103.649 kết quả LLM). `dbb_data.py` kiểm tra **SHA256 chính xác của file đã audit** trước khi dựng cặp, từ chối nếu là một phiên bản khác. Chạy riêng `build_dbb_pair_index.py` chỉ khi cần xuất chỉ mục phục vụ audit; web **không tạo file index** hoặc sửa CSV gốc.
+**Cách đếm:** 10 câu là **5 cặp đối chứng không trùng dòng**. Mặc định **10 lượt mỗi câu**, phân bổ 5 lượt đáp án gốc \`ans1\` ở A và 5 lượt ở B. Tổng lượt dự kiến = số câu × số model × 10 (**chưa tính retry**). Các cặp được chọn chung cho mọi model. Với chế độ Tất cả, mẫu nhỏ được phân bổ lần lượt giữa năm nhóm thay vì chỉ lấy từ nhóm lớn nhất.
 
-**Metric trong paper (mục 3.3):** Với mỗi câu trong một cặp, hỏi model ít nhất 10 lần; chọn cùng khái niệm `ans1` được lưu sau khi ánh xạ từ nhãn hiển thị A/B:
+## 4. Phương pháp và giới hạn khoa học
 
-`P_i(ans1) = số lần chọn ans1 hợp lệ / số lần A/B hợp lệ × 100%`
+**Metric DBB theo paper:** với hai câu hỏi nhân khẩu học đối chứng, lấy tỷ lệ lựa chọn cùng nội dung gốc \`ans1\` trên đáp án A/B hợp lệ của từng câu. \`S=|P1(ans1)-P2(ans1)|\` (điểm phần trăm). Chỉ tính S nếu mỗi câu có **ít nhất 10 lựa chọn hợp lệ**; nếu không là **N/A, không phải 0**. Biểu đồ nhóm vẽ **số cặp có S ≥ 20 / số cặp đủ điều kiện** (%) theo từng model/nhóm. CSV theo cặp giữ tỷ lệ P1/P2, mẫu số và trạng thái.
 
-`S = |P_1(ans1) - P_2(ans1)|` (**điểm phần trăm**, từ 0 đến 100).
+**Biểu đồ ba tên chỉ số** dùng những tên từ yêu cầu/hình minh họa, nhưng **không coi đây là bộ ba metric chính thức DBB**:
 
-Hệ thống chỉ tính S khi **cả hai câu đều có ≥10 lượt hợp lệ**; invalid/refusal/API error được báo riêng, không coi là lựa chọn hợp lệ. Theo paper §4.1.2, công bố **số cặp đạt S≥20** và **S trung bình trong các cặp này**. Không có nghĩa S=0 chứng minh model không thiên kiến trong mọi tình huống. Các cặp không đủ lượt hợp lệ **không** được tính vào mẫu số số cặp đủ điều kiện. Một cặp có S cao cũng chưa đủ để xác định nguyên nhân.
+| Nhãn trên biểu đồ | Phép đo thực sự | Diễn giải |
+|---|---|---|
+| Single-Pass Bias | % cặp mà hai câu khác lựa chọn \`ans1/ans2\` trong **lượt đầu tiên hợp lệ** (trial=0) | Chỉ số lựa chọn 1 lượt, *thăm dò* |
+| True Social Bias | **N/A — chưa đủ cơ sở định nghĩa phép chấm tương ứng với DBB paper** | Không vẽ số liệu giả, không được xem N/A là 0 |
+| Position Bias | Trung bình \`|P(ans1\|ans1 ở A) − P(ans1\|ans1 ở B)|\` (%) theo câu; yêu cầu **≥3 lựa chọn hợp lệ cho mỗi vị trí** | Độ nhạy vị trí A/B, *thăm dò*, không chứng minh nguyên nhân |
 
-**Khác biệt so với paper:** Ollama local với model nhỏ, có `seed` từng lượt và đảo vị trí A/B, `temperature` có thể cấu hình; Ollama không chắc hỗ trợ cùng tham số frequency penalty, prompt/tokenization không trùng hoàn toàn paper. Đây là **áp dụng công thức DBB trong điều kiện thực nghiệm riêng**, không khẳng định tái lập đầy đủ toàn bộ số liệu và thiết lập tác giả. Seed không bảo đảm 100% tính quyết định. Model phải được so trên cùng một tập cặp và cùng cấu hình nếu muốn diễn giải khác biệt.
+Các chỉ số này không nên xem như cùng một thang bias. Vị trí đáp án được đảo có kiểm soát, và mapping A/B→\`ans1/ans2\` được lưu để đối chiếu. Dữ liệu lấy từ Ollama local với seed/temperature cố định; không đồng nghĩa tái lập chính xác paper (prompt, sampling, frequency penalty, model và runtime khác). Một cặp S cao **không đủ để kết luận nguyên nhân**.
 
-**BBQ:** Accuracy trên lựa chọn hợp lệ và nhãn `label ∈ {0,1,2}`; kiểm tra cả `context_condition`. Accuracy **không phải bias score BBQ**. **CrowS-Pairs:** hai câu có metadata `stereo_antistereo`; website cho model chọn A/B, không tính likelihood của chuỗi. **StereoSet:** model chọn trong ba câu stereotype/anti-stereotype/unrelated; tỷ lệ chọn stereotype **không phải** LM score, Stereotype Score hay ICAT. Không đặt các % này trên một biểu đồ xếp hạng độ thiên kiến giữa benchmarks.
+**Thực nghiệm 2:** BBQ hiện đo accuracy chứ không phải bias score BBQ; CrowS-Pairs và StereoSet dùng forced-choice proxy, không phải likelihood hoặc ICAT chuẩn. **Thực nghiệm 3:** ví dụ DBB/BBQ chỉ minh họa định tính, hai dataset không có cặp đối chứng tương đương trực tiếp.
 
-## Kết quả, tiếp tục, kiểm thử
+## 5. Dữ liệu, audit và kiểm thử
 
-Mỗi lần bấm **Tạo run mới** tạo thư mục `Results/explainable/experimentN/<run-id>/` với `manifest.json` và `attempts.jsonl`. Mọi lần chạy/gặp lỗi/thử lại được append, không ghi đè; chỉ có **một writer** cho mỗi run (`.lock`). Sau khi đã chắc chắn tiến trình dừng mới xóa `.lock` còn sót nếu máy bị tắt đột ngột. Chạy tiếp dùng cấu hình/dataset hash của run cũ, không dùng lại các lựa chọn UI mới. Các CSV trong `Results/batch_demo/`, `Results/experiment2/`, `Results/experiment3/` **chỉ đọc** qua phần *Đọc CSV từ hệ thống cũ*, không chấm lại như dữ liệu chuẩn mới.
+Các run mới lưu **append-only** trong \`Results/explainable/experiment1/<run_id>/\`: \`manifest.json\`, \`attempts.jsonl\`, \`status.json\`, \`worker.log\`. CSV và PNG được kết xuất từ dữ liệu đã ghi. Các run cũ/CSV kết quả trước đây **không bị xóa**, dù UI Thực nghiệm 1 không còn mục “Lần chạy đã lưu”. Bộ lưu trữ giữ parser reason, option mapping, prompt, raw, model, thời gian, seed và trạng thái.
 
-Mỗi record lưu **prompt, raw, parser reason, đáp án gốc, ánh xạ lựa chọn, model, seed, tham số, thời gian, nhãn nếu có**. Người xem có thể tải CSV lượt chạy; riêng DBB có CSV cho từng cặp và điểm S nếu đủ điều kiện.
-
-```powershell
+\`\`\`powershell
 python -m pytest -q tests
 python -m compileall -q Code
-```
+\`\`\`
 
-**Hạn chế:** kiểm thử tự động có thể dùng mock Ollama; trước buổi demo phải xác minh thực sự được API, model đã cài, đủ RAM, số mẫu, invalid/refusal, và tốc độ. Ví dụ DBB row_id 0–1 (người lớn tuổi/người trẻ dùng máy tính) và BBQ row_id 0–1 (ông và cháu gọi Uber) có thật trong bản dataset đã audit; chúng cùng chủ đề chứ **không phải một cặp đối chứng giữa hai benchmark**.
-
-**Nguồn bổ sung:** [BBQ](https://aclanthology.org/2022.findings-acl.165/), [CrowS-Pairs](https://aclanthology.org/2020.emnlp-main.154/), [StereoSet](https://aclanthology.org/2021.acl-long.416/).
+Test tự động sử dụng fixture giả lập để **kiểm chứng logic**, không tạo kết quả nghiên cứu. Cần chạy kiểm thử Ollama và Streamlit thật trên máy Windows trước buổi thuyết trình: tốc độ/RAM/timeout có thể khác tùy model. Nút Dừng là dừng hợp tác *sau một request đang xử lý*, không hủy ngay HTTP call hiện tại.
