@@ -36,6 +36,34 @@ def file_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def sha256_with_lf_line_endings(path: Path) -> str:
+    """Allow ONLY CRLF -> LF byte normalization, never CSV semantic assumptions."""
+    digest = hashlib.sha256()
+    trailing = b''
+    with path.open('rb') as f:
+        for data in iter(lambda: f.read(2**20), b''):
+            data = trailing + data
+            trailing = b''
+            if data.endswith(b'\r'):
+                data, trailing = data[:-1], b'\r'
+            digest.update(data.replace(b'\r\n', b'\n'))
+    if trailing:
+        digest.update(trailing)
+    return digest.hexdigest()
+
+
+def verify_audited_dbb(path: Path) -> str:
+    """The FULL normalized byte stream must match the audited reference."""
+    raw_sha = file_sha256(path)
+    if raw_sha == DBB_SHA256 or sha256_with_lf_line_endings(path) == DBB_SHA256:
+        return DBB_SHA256
+    raise ValueError(
+        f'DBB CSV không khớp bản audit; file={path.resolve()}; '
+        f'size={path.stat().st_size}; SHA256={raw_sha}; expected={DBB_SHA256}. '
+        'Không tạo cặp đối chứng từ một phiên bản chưa xác minh.'
+    )
+
+
 def load_csv(filename: str, required: set[str]) -> pd.DataFrame:
     path = DATASET / filename
     if not path.is_file():
@@ -77,8 +105,7 @@ def load_stereoset() -> pd.DataFrame:
 def audited_pairs(df: pd.DataFrame) -> pd.DataFrame:
     """Only generate pair IDs for exact audited data; never guess row relationships."""
     path = DATASET / 'Bias-Dataset.csv'
-    if file_sha256(path) != DBB_SHA256:
-        raise ValueError('DBB CSV khác bản đã audit SHA256; từ chối suy đoán các cặp. Kiểm tra phiên bản dữ liệu.')
+    verify_audited_dbb(path)
     if len(df) != 77350:
         raise ValueError('DBB yêu cầu đúng 77.350 dòng của bản đã audit.')
     result = []
