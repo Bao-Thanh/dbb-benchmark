@@ -1,0 +1,29 @@
+# Python and local environments
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+# Secrets
+.env
+.env.*
+!.env.example
+# Local IDE/OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+# Models and local outputs
+llm/
+Results/
+*.log
+*.tmp
+# Dataset files provided independently; never commit generated files
+Dataset/*.csv
+Dataset/*.json
+Dataset/*.jsonl
+# Local export artifacts
+*_inferred_pairs.csv
+*.zip
