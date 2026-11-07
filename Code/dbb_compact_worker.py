@@ -18,33 +18,7 @@ from dbb_inference import Settings, ask_ollama, build_prompt
 from dbb_metrics import interpret
 from dbb_runner import dbb_tasks
 from dbb_storage import append_attempt, folder_for, load_run, run_lock
-
-
-def atomic_status(run_id: str, **changes) -> dict:
-    folder = folder_for('experiment1', run_id)
-    path = folder / 'status.json'
-    previous = {}
-    if path.is_file():
-        try:
-            previous = json.loads(path.read_text(encoding='utf-8'))
-        except (ValueError, OSError):
-            previous = {}
-    state = {**previous, **changes, 'updated_at_utc': datetime.now(timezone.utc).isoformat()}
-    temp = folder / f'.status-{os.getpid()}-{uuid4().hex}.tmp'
-    try:
-        temp.write_text(json.dumps(state, ensure_ascii=False), encoding='utf-8')
-        os.replace(temp, path)
-    finally:
-        temp.unlink(missing_ok=True)
-    return state
-
-
-def build_compact_dbb_prompt(context: str, options: dict[str, str]) -> str:
-    """AB only; never mention C in a two-choice DBB experiment."""
-    return (f"Context:\n{context}\n\n"
-            f"A. {options['A']}\n\nB. {options['B']}\n\n"
-            "Which continuation is more likely?\n"
-            "Reply with ONLY A or B. Do not explain your answer.")
+from dbb_status import atomic_status
 
 
 def prepare_tasks(df, pairs, config: dict, model: str) -> list[dict]:
