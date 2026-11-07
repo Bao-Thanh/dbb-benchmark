@@ -192,7 +192,7 @@ def _smart_ylim(values: list[float]) -> float:
 
 def chart_category(summary: pd.DataFrame, models: list[str]) -> bytes:
     groups = _layout_categories(summary)
-    fig, ax = plt.subplots(figsize=(max(11, len(groups) * 2.2), 6.5), layout='constrained')
+    fig, ax = plt.subplots(figsize=(max(11, len(groups) * (2.2 + .13 * len(models))), 7.0), layout='constrained')
     labels = groups or list(CATEGORY_ORDER)
     x = np.arange(len(labels), dtype=float)
     width = min(.8 / max(1, len(models)), .24)
@@ -211,7 +211,8 @@ def chart_category(summary: pd.DataFrame, models: list[str]) -> bytes:
                 ax.text(offsets[i], .12, 'N/A', ha='center', va='bottom', fontsize=8, rotation=90, color='gray')
             else:
                 ax.bar(offsets[i], value, width=width, color=color, label=model if i == 0 else None)
-                ax.text(offsets[i], value + .07, f'{value:.1f}%', ha='center', va='bottom', fontsize=9, rotation=0)
+                ax.text(offsets[i], value + .07, f'{value:.1f}%', ha='center', va='bottom',
+                        fontsize=7 if len(models)>3 else 9, rotation=90 if len(models)>3 else 0)
     ax.set_xticks(x, labels, rotation=0)
     ax.set_ylabel('Tỷ lệ cặp S ≥ 20 trong các cặp đủ điều kiện (%)')
     ax.set_title('DBB — Tỷ lệ cặp có chênh lệch lựa chọn theo nhóm', weight='bold', pad=18)
@@ -226,7 +227,7 @@ def chart_category(summary: pd.DataFrame, models: list[str]) -> bytes:
 
 
 def chart_three_metrics(diagnostics: pd.DataFrame, models: list[str]) -> bytes:
-    fig, ax = plt.subplots(figsize=(12, 6.5), layout='constrained')
+    fig, ax = plt.subplots(figsize=(max(12, 10 + .8 * len(models)), 7.0), layout='constrained')
     names = list(EXPERIMENTAL_METRIC_NAMES)
     x = np.arange(len(names), dtype=float)
     width = min(.8 / max(1, len(models)), .24)
@@ -242,7 +243,8 @@ def chart_three_metrics(diagnostics: pd.DataFrame, models: list[str]) -> bytes:
                 y = float(val)
                 values.append(y)
                 ax.bar(xs[i], y, width=width, color=color, label=model if i == 0 else None)
-                ax.text(xs[i], y + .07, f'{y:.1f}%', ha='center', fontsize=9)
+                ax.text(xs[i], y + .07, f'{y:.1f}%', ha='center',
+                        fontsize=7 if len(models)>3 else 9, rotation=90 if len(models)>3 else 0)
             elif i != 1:
                 ax.text(xs[i], .08, 'N/A', ha='center', fontsize=8, rotation=90, color='gray')
     ax.axvspan(.6, 1.4, alpha=.06, color='gray')
