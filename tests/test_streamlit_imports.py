@@ -7,6 +7,7 @@ import types
 def test_import_all_pages_and_main_router(monkeypatch):
     st=types.ModuleType('streamlit')
     st.cache_data=lambda **kwargs: lambda fn:fn
+    st.fragment=lambda **kwargs: lambda fn:fn
     for method in ('set_page_config','title','caption','markdown','divider'):
         setattr(st,method,lambda *args,**kwargs:None)
     st.radio=lambda *args,**kwargs:'1 · DBB cặp đối chứng'
