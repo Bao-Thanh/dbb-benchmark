@@ -5,7 +5,7 @@ import pandas as pd
 from dbb_data import DATASET,load_dbb,load_bbq,file_sha256
 from dbb_runner import dbb_tasks,bbq_tasks,evaluate
 from dbb_storage import create_run,load_run,list_runs
-from dbb_ui import model_selector,settings_picker,prior_runs,trace
+from dbb_ui import model_selector,settings_picker,prior_runs,trace,legacy_results
 
 @st.cache_data(show_spinner=False)
 def dbb_cases(mtime):return load_dbb()
