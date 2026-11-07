@@ -39,6 +39,14 @@ def atomic_status(run_id: str, **changes) -> dict:
     return state
 
 
+def build_compact_dbb_prompt(context: str, options: dict[str, str]) -> str:
+    """AB only; never mention C in a two-choice DBB experiment."""
+    return (f"Context:\n{context}\n\n"
+            f"A. {options['A']}\n\nB. {options['B']}\n\n"
+            "Which continuation is more likely?\n"
+            "Reply with ONLY A or B. Do not explain your answer.")
+
+
 def prepare_tasks(df, pairs, config: dict, model: str) -> list[dict]:
     """Every model sees the same trial prompts; balanced original A/B positions.
 
@@ -56,8 +64,8 @@ def prepare_tasks(df, pairs, config: dict, model: str) -> list[dict]:
                    {'A':'ans2','B':'ans1'})
         display = {letter:str(row[src]) for letter,src in mapping.items()}
         task['display_mapping'] = mapping
-        task['prompt'] = build_prompt(str(row['Context']),display,
-                                      'Which continuation is more likely?')
+        task['prompt'] = build_compact_dbb_prompt(str(row['Context']),display)
+        task['prompt_version'] = 'dbb_ab_only_v2_20261107'
         task['task_key'] = f'{model}|{task["task_key"]}'
         task['question_id'] = int(task['source_row'])
         task['order'] = 'normal' if trial % 2 == 0 else 'swapped'
