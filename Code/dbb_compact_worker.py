@@ -21,6 +21,16 @@ from dbb_storage import append_attempt, folder_for, load_run, run_lock
 from dbb_status import atomic_status
 
 
+def build_compact_dbb_prompt(context: str, options: dict[str, str]) -> str:
+    """DBB always presents exactly A/B; never suggest that C is available."""
+    if set(options) != {'A', 'B'}:
+        raise ValueError('DBB compact prompt requires exactly the A/B options.')
+    return (f"Context:\n{context}\n\n"
+            f"A. {options['A']}\n\nB. {options['B']}\n\n"
+            "Which continuation is more likely?\n"
+            "Reply with ONLY A or B. Do not explain your answer.")
+
+
 def prepare_tasks(df, pairs, config: dict, model: str) -> list[dict]:
     """Every model sees the same trial prompts; balanced original A/B positions.
 
