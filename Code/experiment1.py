@@ -17,6 +17,7 @@ from dbb_compact_report import METHOD_NOTE, report_files, sample_disjoint_pairs,
 from dbb_data import DATASET, DBB_SHA256, audited_pairs, file_sha256, load_dbb
 from dbb_inference import Settings, models_available
 from dbb_storage import create_run, folder_for, load_run
+from dbb_status import read_status
 
 QUESTIONS_PRESETS = [10, 20, 50, 100, 200, 500]
 REPEATS = 10
@@ -27,16 +28,6 @@ def audited_data(mtime_ns: int):
     """Caches input and validated counterfactual index across UI reruns."""
     data = load_dbb()
     return data, audited_pairs(data)
-
-
-def read_status(run_id: str) -> dict:
-    path = folder_for('experiment1', run_id) / 'status.json'
-    if not path.exists():
-        return {'state':'initializing', 'done':0, 'total':0, 'valid':0, 'invalid':0}
-    try:
-        return json.loads(path.read_text(encoding='utf-8'))
-    except (OSError, ValueError):
-        return {'state':'initializing', 'done':0, 'total':0, 'valid':0, 'invalid':0}
 
 
 def _running() -> bool:
