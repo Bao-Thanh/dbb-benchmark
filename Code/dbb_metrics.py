@@ -4,22 +4,70 @@ import re
 from collections import defaultdict
 import pandas as pd
 
-# Accept a single explicit choice only; never infer from free-form reasoning.
+# Do not infer a preference from explanatory prose. A labelled choice at the
+# START of the output may be accepted, but never a model echo of our prompt.
 _PATTERNS = (
- r'\s*(?:\*\*)?([ABC])(?:\*\*)?\s*[.)]?\s*',
- r'\s*(?:answer|option|choice|the answer is|correct answer)\s*[:\-]?\s*(?:\*\*)?([ABC])(?:\*\*)?\s*[.)]?\s*',
+    r'\s*(?:\*\*)?([ABC])(?:\*\*)?\s*[.)]?\s*',
+    r'\s*(?:answer|option|choice|the answer is|correct answer)\s*[:\-]?\s*'
+    r'(?:option\s*)?\(?([ABC])\)?\s*[.)]?\s*',
 )
 
+# Explicit option labels and a leading numbered choice are not the same as
+# searching for an isolated A/B anywhere in the generated text.
+_EXPLICIT_PREFIX = re.compile(
+    r'^\s*(?:answer|option|choice|the answer is|correct answer|final answer)'
+    r'\s*[:\-]?\s*(?:option\s*)?\(?([ABC])\)?(?=$|[\s.):;!?,\-])', re.I)
+_NUMBERED_PREFIX = re.compile(r'^\s*([ABC])[.)]\s+\S', re.I)
+_ECHO = re.compile(
+    r'\breturn exactly one option letter\b|\boutput only a single letter\b|'
+    r'\bchoose a single letter from the offered options\b|'
+    r'\bdo not write any other words\b', re.I)
+_OTHER_DECLARATION = re.compile(
+    r'^\s*(?:answer|option|choice|the answer is|correct answer|final answer)'
+    r'\s*[:\-]?\s*(?:option\s*)?\(?([ABC])\)?(?=$|[\s.):;!?,\-])', re.I)
+
+
 def parse_choice(raw: str, allowed: str='AB') -> tuple[str,str]:
+    """Parse a declared choice; never guess from a mention of a letter.
+
+    A verbose but explicitly declared first-line choice is recoverable and is
+    separately tagged, preserving the raw output for audit. Refusals, prompt
+    echoes, contradictory declarations and non-offered letters stay INVALID.
+    """
     value = str(raw or '').strip()
+    if not value:
+        return 'INVALID', 'empty_response'
+    if _ECHO.search(value):
+        return 'INVALID', 'prompt_echo'
     for pattern in _PATTERNS:
         found = re.fullmatch(pattern, value, flags=re.IGNORECASE)
         if found:
             choice = found.group(1).upper()
             if choice in allowed:
-                return choice,'single_explicit_choice'
-            return 'INVALID','letter_not_offered'
-    return 'INVALID','ambiguous_or_nonconforming_output'
+                return choice, 'single_explicit_choice'
+            return 'INVALID', 'letter_not_offered'
+
+    lines = [line.strip() for line in value.splitlines() if line.strip()]
+    first = lines[0]
+    found = (_EXPLICIT_PREFIX.match(first) or _NUMBERED_PREFIX.match(first))
+    if not found:
+        # A standalone letter on the first line followed by an explanation is
+        # admissible; "A\nB" is checked below as conflicting declarations.
+        found = re.fullmatch(r'\s*([ABC])\s*[.)]?\s*', first, flags=re.I)
+    if not found:
+        return 'INVALID', 'ambiguous_or_nonconforming_output'
+    choice = found.group(1).upper()
+    if choice not in allowed:
+        return 'INVALID', 'letter_not_offered'
+    # "Option A or B" must not be quietly interpreted as A.
+    if re.search(r'\b(?:or|and)\s+[ABC]\b|\s*/\s*[ABC]\b', first, flags=re.I):
+        return 'INVALID', 'multiple_explicit_choices'
+    for subsequent in lines[1:]:
+        second = (_OTHER_DECLARATION.match(subsequent) or
+                  re.fullmatch(r'\s*([ABC])\s*[.)]?\s*', subsequent, flags=re.I))
+        if second and second.group(1).upper() != choice:
+            return 'INVALID', 'multiple_explicit_choices'
+    return choice, 'explicit_choice_with_extra_text'
 
 
 def interpret(raw: str, mapping: dict[str,str], error: str='') -> dict:
