@@ -7,6 +7,11 @@ from dbb_metrics import dbb_pair_metrics, dbb_summary
 from dbb_runner import dbb_tasks, evaluate
 from dbb_storage import create_run, load_run
 from dbb_ui import model_selector, settings_picker, prior_runs, trace, legacy_results
+from dbb_metrics import latest_attempts
+from dbb_charts import (category_pair_rates, response_quality, answer_selection,
+                        plot_pair_scores, plot_category_flags, plot_invalid_rate,
+                        plot_selection, plot_pair_probabilities)
+import matplotlib.pyplot as plt
 
 @st.cache_data(show_spinner=False)
 def data_and_pairs(mtime:float):
@@ -85,10 +90,83 @@ def render():
             st.dataframe(score,hide_index=True,use_container_width=True)
             st.download_button('⬇ Xuất bảng cặp + S',score.to_csv(index=False).encode('utf-8-sig'),
                   file_name='dbb_pair_scores_'+rid+'.csv',mime='text/csv')
-            valid=score[score.eligible]
-            if not valid.empty:
-                grouped=valid.groupby('bias_type')['above_20'].agg(['sum','count']).rename(columns={'sum':'S≥20','count':'Đủ điều kiện'})
-                st.bar_chart(grouped[['S≥20']],y_label='Số cặp ≥20 (chỉ cặp đủ điều kiện)')
+            summary=dbb_summary(score)
+            st.subheader('Biểu đồ phân tích DBB (từ kết quả đã lưu)')
+            k1,k2,k3=st.columns(3)
+            k1.metric('Cặp đủ ≥10/câu',f"{summary['pairs_eligible']}/{summary['pairs_planned']}")
+            k2.metric('Cặp S ≥ 20',f"{summary['pairs_S_ge_20']}/{summary['pairs_eligible']}")
+            k3.metric('S TB của cặp S≥20',
+                      f"{summary['mean_S_among_flagged']:.1f} điểm" if summary['mean_S_among_flagged'] is not None else 'Chưa có')
+            st.caption('Mẫu số tỷ lệ vượt ngưỡng chỉ gồm cặp có ≥10 đáp án A/B hợp lệ trên từng câu. '
+                       'Các cặp chưa đủ dữ liệu không được gán điểm S = 0.')
+            tab_score,tab_quality,tab_detail=st.tabs([
+                '📊 Điểm S theo cặp', '🛡️ Tỷ lệ phản hồi không hợp lệ',
+                '🔎 Lựa chọn và giải thích'])
+            with tab_score:
+                if not score['eligible'].any():
+                    st.info('Chưa có cặp đủ 10 đáp án hợp lệ/câu. '
+                            'Kết quả demo 1 lượt/câu chỉ là quan sát, không được tính điểm S.')
+                else:
+                    fig=plot_pair_scores(score)
+                    if fig is not None:
+                        st.pyplot(fig,clear_figure=True,use_container_width=True)
+                        plt.close(fig)
+                    st.caption('Tối đa 20 cặp đủ điều kiện, sắp xếp theo S giảm dần; '
+                               'đường nét đứt tại ngưỡng S=20 điểm phần trăm.')
+                    groups=category_pair_rates(score)
+                    fig=plot_category_flags(groups)
+                    if fig is not None:
+                        st.pyplot(fig,clear_figure=True,use_container_width=True)
+                        plt.close(fig)
+                        st.dataframe(groups,hide_index=True,use_container_width=True)
+                    st.caption('Từng nhóm: số cặp S≥20 / số cặp đủ điều kiện trong nhóm. '
+                               'Không dùng tất cả các cặp kế hoạch làm mẫu số.')
+            with tab_quality:
+                quality=response_quality(records,saved['model'])
+                fig=plot_invalid_rate(quality)
+                if fig is None:
+                    st.info('Chưa có lượt gọi DBB để vẽ tỷ lệ lỗi.')
+                else:
+                    st.pyplot(fig,clear_figure=True,use_container_width=True)
+                    plt.close(fig)
+                    st.dataframe(quality,hide_index=True,use_container_width=True)
+                    st.caption('Mẫu số = tất cả lượt gọi thực tế, kể cả retry. '
+                               'INVALID và lỗi API không bị ẩn khỏi thống kê.')
+            with tab_detail:
+                selection=answer_selection(records,saved['model'])
+                fig=plot_selection(selection)
+                if fig is not None:
+                    st.pyplot(fig,clear_figure=True,use_container_width=True)
+                    plt.close(fig)
+                    st.dataframe(selection,hide_index=True,use_container_width=True)
+                    st.caption('Tỷ lệ chọn phương án gốc ans1 chỉ là thống kê thăm dò, '
+                               'KHÔNG phải điểm thiên kiến.')
+                else:
+                    st.info('Chưa có lựa chọn A/B hợp lệ để vẽ.')
+                if not score.empty:
+                    pair_id=st.selectbox('Chọn cặp để kiểm tra cách tính',
+                                         score['pair_id'].astype(str).tolist(),key='e1_chart_pair')
+                    pair=score.loc[score['pair_id'].astype(str).eq(pair_id)].iloc[0]
+                    fig=plot_pair_probabilities(pair)
+                    if fig is not None:
+                        st.pyplot(fig,clear_figure=True,use_container_width=True)
+                        plt.close(fig)
+                    if bool(pair['eligible']):
+                        st.write(f"**S = |{pair['p1_ans1_pct']:.1f}% − {pair['p2_ans1_pct']:.1f}%| = {pair['dbb_S_points']:.1f} điểm phần trăm**")
+                    else:
+                        st.info(f"Chưa tính S: câu 1 có {int(pair['valid_1'])} đáp án hợp lệ, "
+                                f"câu 2 có {int(pair['valid_2'])}; yêu cầu ≥10/câu.")
+                    st.caption('Cả hai tỷ lệ đều xét ans1 gốc sau ánh xạ A/B, '
+                               'không so chữ A trực tiếp.')
+                    recent=latest_attempts(records)
+                    for row_id,label in ((int(pair['row_id_1']),'Câu đối chứng 1'),
+                                         (int(pair['row_id_2']),'Câu đối chứng 2')):
+                        chosen=[r for r in recent if r.get('benchmark')=='DBB' and
+                                r.get('source_row')==row_id and r.get('model')==saved['model']]
+                        if chosen:
+                            trace(chosen[-1],f'{label}: row_id={row_id} · Prompt, raw, parser')
+                        else:
+                            st.caption(f'{label} (row_id={row_id}): chưa có phản hồi.')
             st.warning('Một cặp đủ 10 lượt/câu vẫn không chứng minh nguyên nhân thiên kiến. Cần xem phân phối, mẫu, invalid và điều kiện mô hình.')
 
     legacy_results('experiment1')
