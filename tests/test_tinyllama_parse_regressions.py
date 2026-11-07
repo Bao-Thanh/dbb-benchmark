@@ -10,7 +10,7 @@ from dbb_compact_worker import build_compact_dbb_prompt
     ("Answer: Option B", "B", "single_explicit_choice"),
     ("Option: A (only one letter is available)\nExplanation: Option A is a continuation. On the other hand, option B is a continuation.", "A", "explicit_choice_with_extra_text"),
     ("Option B is correct as available. The continuation is descriptive.", "B", "explicit_choice_with_extra_text"),
-    ("Option: (C)\nReturning exactly one option letter (C).", "INVALID", "prompt_echo"),
+    ("Option: (C)\nReturning exactly one option letter (C).", "INVALID", "letter_not_offered"),
     ("Return exactly one option letter (A, B or C as available); no explanation.", "INVALID", "prompt_echo"),
     ("Option: A\nReturn exactly one option letter (A, B or C as available); no explanation.", "INVALID", "prompt_echo"),
     ("Option: A or B", "INVALID", "multiple_explicit_choices"),
