@@ -11,6 +11,7 @@ import zipfile
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+from matplotlib.patches import Patch
 import numpy as np
 
 import pandas as pd
@@ -98,15 +99,18 @@ def grouped_vertical_chart(summary: pd.DataFrame, benchmarks: list[str],
                 ax.bar(positions[i], value, width=width, color=colors[j % len(colors)])
                 ax.text(positions[i], min(104, value + 1.5), f'{value:.0f}%',
                         ha='center', va='bottom', fontsize=8)
-        # Add one legend entry per model, including models with only N/A values.
-        ax.bar([], [], color=colors[j % len(colors)], label=model)
+        # Legend is built from explicit patches below; empty bar containers
+        # do not reliably preserve colors in some Matplotlib configurations.
     ax.set_xticks(x, names)
     ax.set_ylim(0, 110)
     ax.set_ylabel('Phần trăm (%)')
     ax.set_title(title, weight='bold')
     ax.grid(axis='y', alpha=0.2)
     ax.set_axisbelow(True)
-    ax.legend(title='Model', loc='upper left', bbox_to_anchor=(1.01, 1))
+    legend_handles = [Patch(facecolor=colors[j % len(colors)], edgecolor='none',
+                            label=model) for j, model in enumerate(models)]
+    ax.legend(handles=legend_handles, title='Model', loc='upper left',
+              bbox_to_anchor=(1.01, 1))
     out = io.BytesIO()
     fig.savefig(out, format='png', dpi=170, bbox_inches='tight', facecolor='white')
     plt.close(fig)
