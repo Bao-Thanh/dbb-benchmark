@@ -74,14 +74,40 @@ def _report(kind: str, run_ids: list[str], benchmarks: list[str]) -> None:
     st.caption('Các chỉ số có định nghĩa khác nhau; không xếp hạng thiên kiến giữa benchmark.')
     for name in benchmarks:
         st.caption('**' + name + ':** ' + EXPLANATIONS[name])
-    # One plot per benchmark avoids mixing unlike metrics on one scale.
-    chart_data = summary[['Model', 'Benchmark', 'Tỷ lệ hợp lệ (%)', 'Giá trị (%)']].copy()
-    st.subheader('Biểu đồ theo benchmark')
+    # Compare all selected models on the SAME benchmark and the SAME sampled rows.
+    # Metric and answer-format compliance have different denominators and must
+    # never be presented as interchangeable or as a universal bias ranking.
+    st.subheader('So sánh các model trên cùng benchmark')
+    st.caption('Mỗi biểu đồ gom tất cả model. N/A = không có phản hồi hợp lệ, '
+               'không được hiểu là 0%. Mọi model dùng cùng mẫu (seed 42).')
     for name in benchmarks:
-        part = chart_data[chart_data['Benchmark'] == name].set_index('Model')
-        if not part.empty:
-            st.write('**' + name + '**')
-            st.bar_chart(part[['Tỷ lệ hợp lệ (%)', 'Giá trị (%)']])
+        part = summary.loc[summary['Benchmark'].eq(name)].copy()
+        if part.empty:
+            continue
+        st.markdown('**' + name + '** — ' + EXPLANATIONS[name])
+        metric_label = str(part['Chỉ số (không so trực tiếp)'].iloc[0])
+        part['Giá trị (%)'] = pd.to_numeric(part['Giá trị (%)'], errors='coerce')
+        valid_metric = part.dropna(subset=['Giá trị (%)'])
+        if valid_metric.empty:
+            st.info('N/A — chưa có phản hồi hợp lệ để tính ' + metric_label + '.')
+        else:
+            st.caption(metric_label + ' · % trên phản hồi hợp lệ')
+            st.bar_chart(valid_metric.set_index('Model')[['Giá trị (%)']],
+                         y_label='Phần trăm (%)', use_container_width=True)
+        st.dataframe(part[['Model', 'Đã thử', 'Hợp lệ', 'Không hợp lệ',
+                           'Tỷ lệ hợp lệ (%)', 'Giá trị (%)']],
+                     hide_index=True, use_container_width=True)
+
+    st.subheader('Tỷ lệ phản hồi hợp lệ — tất cả model và benchmark')
+    validity = summary.pivot(index='Model', columns='Benchmark',
+                             values='Tỷ lệ hợp lệ (%)')
+    ordered = [name for name in benchmarks if name in validity.columns]
+    if ordered:
+        st.bar_chart(validity[ordered], y_label='Phần trăm hợp lệ (%)',
+                     use_container_width=True)
+    st.caption('Biểu đồ hợp lệ đo khả năng trả lời đúng định dạng, KHÔNG đo thiên kiến. '
+               'Để đánh giá DBB S theo paper, dùng Thực nghiệm 1 với đủ lượt hợp lệ.')
+
     raw = export_csv(attempts)
     aggregate = summary.to_csv(index=False).encode('utf-8-sig')
     explanation = ('Các chỉ số chỉ mang tính mô tả/thăm dò, không thay thế metric gốc.\n'
@@ -140,14 +166,11 @@ def render_compact(kind: str, benchmarks: list[str], title: str, subtitle: str) 
                        'benchmarks': chosen,
                        'dataset_hashes': {n: file_sha256(DATASET / DATASETS[n][0])
                                           for n in chosen}}
-                rid = create_run(kind, cfg)
-                run_ids.append(rid)
                 for bench_index, name in enumerate(chosen):
                     tasks = build_tasks(name, count, 42, cfg)
-                    # Use a distinct run per benchmark to avoid repeated task keys.
-                    if bench_index:
-                        rid = create_run(kind, cfg)
-                        run_ids.append(rid)
+                    # Internal audit storage only; no run management in the UI.
+                    rid = create_run(kind, cfg)
+                    run_ids.append(rid)
                     step = model_index * len(chosen) + bench_index
                     st.caption(f'Đang đánh giá: {model} · {name}')
                     evaluate(kind, rid, tasks,
