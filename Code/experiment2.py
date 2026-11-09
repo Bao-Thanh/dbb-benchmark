@@ -3,6 +3,7 @@ import streamlit as st
 from dbb_simple_report_ui import render_compact
 
 def render():
+    st.caption('Giao diện báo cáo mới · Không cần tạo run hoặc chọn run cũ')
     render_compact('experiment2', ['DBB', 'BBQ', 'CrowS-Pairs', 'StereoSet'],
                    'Thực nghiệm 2 · So sánh bốn benchmark',
                    'Chọn model, số mẫu, benchmark → chạy → xem biểu đồ và tải báo cáo. '
