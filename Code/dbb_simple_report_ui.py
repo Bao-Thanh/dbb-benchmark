@@ -77,7 +77,9 @@ def grouped_vertical_chart(summary: pd.DataFrame, benchmarks: list[str],
                            layout='constrained')
     x = np.arange(len(names), dtype=float)
     width = min(0.8 / max(len(models), 1), 0.26)
-    colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
+    # Explicit qualitative palette: Streamlit may override Matplotlib's default
+    # cycle with a single blue, making every model indistinguishable.
+    colors = list(plt.get_cmap('tab20').colors)
     for j, model in enumerate(models):
         positions = x - (len(models) - 1) * width / 2 + j * width
         heights = []
@@ -226,33 +228,51 @@ def render_compact(kind: str, benchmarks: list[str], title: str, subtitle: str) 
         st.session_state[kind+'_completed_benchmarks'] = list(chosen)
         bar = st.progress(0)
         total_steps = len(models) * len(chosen)
-        try:
-            for model_index, model in enumerate(models):
+        failures = []
+        completed = 0
+        for model_index, model in enumerate(models):
+            try:
                 cfg = {'model': model, 'settings': Settings(temperature=0.0, seed=42,
                          num_predict=96, timeout=120).metadata(),
-                       'repeats': 1, 'workflow': 'compact_report_v1',
+                       'repeats': 1, 'workflow': 'compact_report_v2',
                        'metric_scope': 'exploratory_only',
                        'benchmarks': chosen,
                        'dataset_hashes': {n: file_sha256(DATASET / DATASETS[n][0])
                                           for n in chosen}}
-                for bench_index, name in enumerate(chosen):
+            except Exception as exc:
+                failures.append(f'{model}: không chuẩn bị được cấu hình: {exc}')
+                completed += len(chosen)
+                bar.progress(min(1.0, completed / total_steps))
+                continue
+            for name in chosen:
+                step = completed
+                st.caption(f'Đang đánh giá model {model_index + 1}/{len(models)}: '
+                           f'{model} · {name}')
+                try:
                     tasks = build_tasks(name, count, 42, cfg)
-                    # Internal audit storage only; no run management in the UI.
+                    # Separate internal audit run for every model/benchmark.
                     rid = create_run(kind, cfg)
                     run_ids.append(rid)
-                    step = model_index * len(chosen) + bench_index
-                    st.caption(f'Đang đánh giá: {model} · {name}')
                     evaluate(kind, rid, tasks,
                              progress=lambda i, n, step=step: bar.progress(
                                  min(1.0, (step + i / max(n, 1)) / total_steps)))
-            st.session_state[kind+'_completed_ids'] = run_ids
-            st.session_state[kind+'_completed_benchmarks'] = chosen
-            st.success('Đã hoàn tất. Báo cáo được tạo từ các phản hồi thực tế.')
-        except Exception as exc:
-            st.session_state[kind+'_completed_ids'] = run_ids
-            st.session_state[kind+'_completed_benchmarks'] = chosen
-            st.error('Đánh giá chưa hoàn tất: ' + str(exc))
-            st.warning('Các lượt đã ghi vẫn được giữ lại; báo cáo bên dưới có thể chưa đủ dữ liệu.')
+                except Exception as exc:
+                    # Do not discard other models if a single model/benchmark
+                    # fails. Already-written attempts remain available.
+                    failures.append(f'{model} · {name}: {type(exc).__name__}: {exc}')
+                finally:
+                    completed += 1
+                    bar.progress(min(1.0, completed / total_steps))
+        st.session_state[kind+'_completed_ids'] = run_ids
+        st.session_state[kind+'_completed_benchmarks'] = list(chosen)
+        st.session_state[kind+'_completed_failures'] = failures
+        if failures:
+            st.warning(f'Hoàn tất với {len(failures)} lỗi; các model khác vẫn được chạy.')
+            with st.expander('Chi tiết lỗi từng model/benchmark'):
+                for message in failures:
+                    st.error(message)
+        else:
+            st.success('Đã đánh giá xong tất cả model và benchmark đã chọn.')
     ids = st.session_state.get(kind+'_completed_ids', [])
     if ids:
         try:
