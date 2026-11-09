@@ -109,7 +109,7 @@ def grouped_vertical_chart(summary: pd.DataFrame, benchmarks: list[str],
     return out.getvalue()
 
 
-def _report(kind: str, run_ids: list[str], benchmarks: list[str]) -> None:
+def _report(kind: str, run_ids: list[str], benchmarks: list[str], models: list[str]) -> None:
     attempts = []
     for rid in run_ids:
         _, records = load_run(kind, rid)
@@ -118,6 +118,27 @@ def _report(kind: str, run_ids: list[str], benchmarks: list[str]) -> None:
     if summary.empty:
         st.warning('Chưa có phản hồi để lập báo cáo.')
         return
+    # Explicitly include every requested model/benchmark, even when inference
+    # stopped before its first response. Missing != 0% and must not vanish.
+    planned = pd.MultiIndex.from_product(
+        [models, benchmarks], names=['Model', 'Benchmark']).to_frame(index=False)
+    summary = planned.merge(summary, on=['Model', 'Benchmark'], how='left',
+                            validate='one_to_one')
+    missing = summary['Đã thử'].isna()
+    if missing.any():
+        labels = ', '.join(summary.loc[missing, 'Model'].astype(str).unique())
+        st.warning('Chưa có kết quả cho: ' + labels +
+                   '. Model vẫn hiển thị N/A; kiểm tra lỗi hoặc chạy lại đánh giá.')
+    for col in ('Đã thử', 'Hợp lệ', 'Không hợp lệ'):
+        summary[col] = summary[col].fillna(0).astype(int)
+    summary['Chỉ số (không so trực tiếp)'] = summary.apply(
+        lambda row: row['Chỉ số (không so trực tiếp)']
+        if pd.notna(row['Chỉ số (không so trực tiếp)'])
+        else {'DBB': 'Tỷ lệ chọn ans1 (mô tả)',
+              'BBQ': 'Accuracy (không phải bias score)',
+              'CrowS-Pairs': 'Tỷ lệ chọn stereotype (proxy)',
+              'StereoSet': 'Tỷ lệ chọn stereotype / 3 lựa chọn (proxy)'}.get(
+                  row['Benchmark'], 'Chỉ số mô tả'), axis=1)
     st.subheader('Báo cáo kết quả')
     st.dataframe(summary, hide_index=True, use_container_width=True)
     st.caption('Các chỉ số có định nghĩa khác nhau; không xếp hạng thiên kiến giữa benchmark.')
@@ -201,6 +222,8 @@ def render_compact(kind: str, benchmarks: list[str], title: str, subtitle: str) 
     if st.button('▶ Chạy và tạo báo cáo', type='primary', use_container_width=True,
                  disabled=not models or not chosen, key=kind+'_start'):
         run_ids = []
+        st.session_state[kind+'_completed_models'] = list(models)
+        st.session_state[kind+'_completed_benchmarks'] = list(chosen)
         bar = st.progress(0)
         total_steps = len(models) * len(chosen)
         try:
@@ -233,6 +256,7 @@ def render_compact(kind: str, benchmarks: list[str], title: str, subtitle: str) 
     ids = st.session_state.get(kind+'_completed_ids', [])
     if ids:
         try:
-            _report(kind, ids, st.session_state.get(kind+'_completed_benchmarks', benchmarks))
+            _report(kind, ids, st.session_state.get(kind+'_completed_benchmarks', benchmarks),
+                    st.session_state.get(kind+'_completed_models', []))
         except Exception as exc:
             st.error('Không thể lập báo cáo: ' + str(exc))
