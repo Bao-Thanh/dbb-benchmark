@@ -53,12 +53,14 @@ def build_tasks(name: str, count: int, seed: int, cfg: dict) -> list[dict]:
 
 
 def _summary(records: list[dict]) -> pd.DataFrame:
-    df = pd.DataFrame(latest_attempts(records))
+    # Task keys intentionally repeat across models (same sampled questions).
+    # Deduplicate only WITHIN each model, never across models.
+    df = pd.DataFrame(records)
     if df.empty:
         return pd.DataFrame()
     output = []
     for model, group in df.groupby('model', sort=True):
-        part = benchmark_summary(group.to_dict('records'))
+        part = benchmark_summary(latest_attempts(group.to_dict('records')))
         if not part.empty:
             part.insert(0, 'Model', model)
             output.append(part)
