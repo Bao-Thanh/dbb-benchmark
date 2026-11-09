@@ -8,6 +8,11 @@ from __future__ import annotations
 import io
 import zipfile
 
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+import numpy as np
+
 import pandas as pd
 import streamlit as st
 
@@ -60,6 +65,50 @@ def _summary(records: list[dict]) -> pd.DataFrame:
     return pd.concat(output, ignore_index=True) if output else pd.DataFrame()
 
 
+def grouped_vertical_chart(summary: pd.DataFrame, benchmarks: list[str],
+                           column: str, title: str) -> bytes:
+    """Grouped vertical bars: x=benchmark, one side-by-side bar per model.
+
+    Missing values are annotated N/A, never silently plotted as zero.
+    """
+    models = sorted(summary['Model'].dropna().unique().tolist())
+    names = [b for b in benchmarks if b in set(summary['Benchmark'])]
+    fig, ax = plt.subplots(figsize=(max(10, 2.0 * len(names) + 1.1 * len(models)), 5.8),
+                           layout='constrained')
+    x = np.arange(len(names), dtype=float)
+    width = min(0.8 / max(len(models), 1), 0.26)
+    colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
+    for j, model in enumerate(models):
+        positions = x - (len(models) - 1) * width / 2 + j * width
+        heights = []
+        for bench in names:
+            match = summary.loc[summary['Model'].eq(model) &
+                                summary['Benchmark'].eq(bench), column]
+            val = pd.to_numeric(match, errors='coerce')
+            heights.append(float(val.iloc[0]) if len(val) and pd.notna(val.iloc[0]) else None)
+        for i, value in enumerate(heights):
+            if value is None:
+                ax.text(positions[i], 2, 'N/A', ha='center', va='bottom',
+                        rotation=90, fontsize=8, color='gray')
+            else:
+                ax.bar(positions[i], value, width=width, color=colors[j % len(colors)])
+                ax.text(positions[i], min(104, value + 1.5), f'{value:.0f}%',
+                        ha='center', va='bottom', fontsize=8)
+        # Add one legend entry per model, including models with only N/A values.
+        ax.bar([], [], color=colors[j % len(colors)], label=model)
+    ax.set_xticks(x, names)
+    ax.set_ylim(0, 110)
+    ax.set_ylabel('Phần trăm (%)')
+    ax.set_title(title, weight='bold')
+    ax.grid(axis='y', alpha=0.2)
+    ax.set_axisbelow(True)
+    ax.legend(title='Model', loc='upper left', bbox_to_anchor=(1.01, 1))
+    out = io.BytesIO()
+    fig.savefig(out, format='png', dpi=170, bbox_inches='tight', facecolor='white')
+    plt.close(fig)
+    return out.getvalue()
+
+
 def _report(kind: str, run_ids: list[str], benchmarks: list[str]) -> None:
     attempts = []
     for rid in run_ids:
@@ -74,39 +123,28 @@ def _report(kind: str, run_ids: list[str], benchmarks: list[str]) -> None:
     st.caption('Các chỉ số có định nghĩa khác nhau; không xếp hạng thiên kiến giữa benchmark.')
     for name in benchmarks:
         st.caption('**' + name + ':** ' + EXPLANATIONS[name])
-    # Compare all selected models on the SAME benchmark and the SAME sampled rows.
-    # Metric and answer-format compliance have different denominators and must
-    # never be presented as interchangeable or as a universal bias ranking.
-    st.subheader('So sánh các model trên cùng benchmark')
-    st.caption('Mỗi biểu đồ gom tất cả model. N/A = không có phản hồi hợp lệ, '
-               'không được hiểu là 0%. Mọi model dùng cùng mẫu (seed 42).')
+    st.subheader('Biểu đồ cột đứng — so sánh model và benchmark')
+    st.caption('Các cột được đặt cạnh nhau, KHÔNG cộng dồn. Mỗi model một màu. '
+               'Chỉ số ở mỗi benchmark có định nghĩa riêng; không xếp hạng thiên kiến '
+               'giữa các benchmark. N/A là thiếu dữ liệu, không phải 0%.')
+    metric_png = grouped_vertical_chart(
+        summary, benchmarks, 'Giá trị (%)',
+        'Chỉ số mô tả theo benchmark và model (không cùng định nghĩa)')
+    st.image(metric_png, use_container_width=True)
     for name in benchmarks:
-        part = summary.loc[summary['Benchmark'].eq(name)].copy()
-        if part.empty:
-            continue
-        st.markdown('**' + name + '** — ' + EXPLANATIONS[name])
-        metric_label = str(part['Chỉ số (không so trực tiếp)'].iloc[0])
-        part['Giá trị (%)'] = pd.to_numeric(part['Giá trị (%)'], errors='coerce')
-        valid_metric = part.dropna(subset=['Giá trị (%)'])
-        if valid_metric.empty:
-            st.info('N/A — chưa có phản hồi hợp lệ để tính ' + metric_label + '.')
-        else:
-            st.caption(metric_label + ' · % trên phản hồi hợp lệ')
-            st.bar_chart(valid_metric.set_index('Model')[['Giá trị (%)']],
-                         y_label='Phần trăm (%)', use_container_width=True)
-        st.dataframe(part[['Model', 'Đã thử', 'Hợp lệ', 'Không hợp lệ',
-                           'Tỷ lệ hợp lệ (%)', 'Giá trị (%)']],
-                     hide_index=True, use_container_width=True)
-
-    st.subheader('Tỷ lệ phản hồi hợp lệ — tất cả model và benchmark')
-    validity = summary.pivot(index='Model', columns='Benchmark',
-                             values='Tỷ lệ hợp lệ (%)')
-    ordered = [name for name in benchmarks if name in validity.columns]
-    if ordered:
-        st.bar_chart(validity[ordered], y_label='Phần trăm hợp lệ (%)',
-                     use_container_width=True)
-    st.caption('Biểu đồ hợp lệ đo khả năng trả lời đúng định dạng, KHÔNG đo thiên kiến. '
-               'Để đánh giá DBB S theo paper, dùng Thực nghiệm 1 với đủ lượt hợp lệ.')
+        if name in set(summary['Benchmark']):
+            st.caption('**' + name + ':** ' + EXPLANATIONS[name])
+    validity_png = grouped_vertical_chart(
+        summary, benchmarks, 'Tỷ lệ hợp lệ (%)',
+        'Tỷ lệ phản hồi hợp lệ theo benchmark và model')
+    st.subheader('Tỷ lệ phản hồi hợp lệ — không phải điểm thiên kiến')
+    st.image(validity_png, use_container_width=True)
+    st.caption('0% hợp lệ nghĩa là không có đáp án đúng định dạng. '
+               'Các chỉ số trên phản hồi hợp lệ được ghi N/A nếu không có mẫu hợp lệ.')
+    st.subheader('Số liệu chi tiết theo benchmark')
+    st.dataframe(summary[['Model', 'Benchmark', 'Đã thử', 'Hợp lệ',
+                          'Không hợp lệ', 'Tỷ lệ hợp lệ (%)', 'Giá trị (%)']],
+                 hide_index=True, use_container_width=True)
 
     raw = export_csv(attempts)
     aggregate = summary.to_csv(index=False).encode('utf-8-sig')
@@ -117,6 +155,8 @@ def _report(kind: str, run_ids: list[str], benchmarks: list[str]) -> None:
         z.writestr('chi_tiet.csv', raw)
         z.writestr('tong_hop.csv', aggregate)
         z.writestr('phuong_phap.txt', explanation)
+        z.writestr('bieu_do_chi_so.png', metric_png)
+        z.writestr('bieu_do_hop_le.png', validity_png)
     left, right = st.columns(2)
     with left:
         st.download_button('⬇ CSV tổng hợp', aggregate,
@@ -126,6 +166,12 @@ def _report(kind: str, run_ids: list[str], benchmarks: list[str]) -> None:
                            file_name=f'{kind}_chi_tiet.csv', mime='text/csv',
                            key=kind+'_detail_download', use_container_width=True)
     with right:
+        st.download_button('⬇ Biểu đồ chỉ số (PNG)', metric_png,
+                           file_name=f'{kind}_chi_so.png', mime='image/png',
+                           key=kind+'_metric_png', use_container_width=True)
+        st.download_button('⬇ Biểu đồ hợp lệ (PNG)', validity_png,
+                           file_name=f'{kind}_hop_le.png', mime='image/png',
+                           key=kind+'_validity_png', use_container_width=True)
         st.download_button('⬇ Tải toàn bộ báo cáo (ZIP)', archive.getvalue(),
                            file_name=f'{kind}_report.zip', mime='application/zip',
                            key=kind+'_zip_download', type='primary',
