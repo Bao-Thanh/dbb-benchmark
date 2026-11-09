@@ -66,7 +66,7 @@ def render():
         model=model_selector('e2_model')
         options=st.multiselect('Bộ benchmark',BENCHMARKS,default=BENCHMARKS,key='e2_benchmarks')
         count=st.slider('Tối đa số mẫu / benchmark (DBB tính theo cặp)',1,20,2)
-        seed=st.number_input('Seed lấy mẫu',0,1000000,42,key='e2_seed')
+        seed=st.number_input('Seed lấy mẫu',0,1000000,42,key='e2_sample_seed')
         settings=settings_picker('e2_',research=False)
         st.caption('DBB ở mục này chạy 1 lượt/câu nên chỉ là phân tích thăm dò; '\
                    'đi đến Thực nghiệm 1 để đánh giá cặp đủ ≥10 lượt/câu.')
