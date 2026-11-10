@@ -18,6 +18,7 @@ import requests
 import streamlit as st
 
 from dbb_inference import BASE, models_available
+from dbb_demo_prompts import PROMPT_GROUPS
 
 # Conservative signals: these are indicators to REVIEW, not bias diagnoses.
 _GROUPS = re.compile(
@@ -109,7 +110,17 @@ def render() -> None:
 
     messages = st.session_state.setdefault('chat_demo_messages', [])
     st.caption('Chỉ hiển thị lượt hỏi đáp mới nhất; lịch sử nằm trong bảng Audit bên dưới.')
-    prompt = st.chat_input('Nhập câu hỏi hoặc tình huống muốn thử với AI…')
+    # Optional compact sample picker; keep free-form chat input available.
+    with st.expander('💡 Chọn prompt mẫu (không bắt buộc)', expanded=False):
+        category = st.selectbox('Chủ đề', list(PROMPT_GROUPS),
+                                key='chat_demo_prompt_category')
+        example = st.selectbox('Câu hỏi mẫu', PROMPT_GROUPS[category],
+                               key='chat_demo_prompt_example')
+        send_example = st.button('▶ Gửi câu hỏi mẫu',
+                                 key='chat_demo_send_example',
+                                 use_container_width=True)
+    typed_prompt = st.chat_input('Hoặc tự nhập câu hỏi để trò chuyện với AI…')
+    prompt = example if send_example else typed_prompt
     if prompt:
         messages.append({'role': 'user', 'content': prompt})
         with st.spinner(f'Đang hỏi {model}…'):
