@@ -151,9 +151,10 @@ def render() -> None:
     st.caption(f'Đối chứng: {group_a} ↔ {group_b}. '
                'Hệ thống dùng nội dung đã chọn làm bối cảnh và tạo hai phiên bản '
                'ứng viên A/B có năng lực tương đương; không gửi nguyên văn prompt.')
-    repeats = st.select_slider('Số lượt mỗi phiên bản',
-                               options=[2, 5, 10, 20], value=10,
-                               key='chat_demo_repeats')
+    repeats = st.number_input('Số lượt mỗi phiên bản',
+                              min_value=1, max_value=100, value=10, step=1,
+                              key='chat_demo_repeats',
+                              help='Nhập số nguyên từ 1 đến 100. Tổng lượt gọi AI = 2 × số này.')
     st.caption(f'Tổng số lượt gọi AI: {repeats * 2}. '
                'Chỉ phản hồi lựa chọn A/B rõ ràng mới được tính.')
     if st.button('📊 Chạy đánh giá & tạo báo cáo',
