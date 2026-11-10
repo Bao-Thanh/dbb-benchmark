@@ -308,11 +308,12 @@ def render() -> None:
             st.metric('Độ tương đồng văn bản (tham khảo)', f'{similarity * 100:.1f}%')
             st.caption('Độ tương đồng chuỗi không đo thiên kiến hay chất lượng câu trả lời.')
 
-    with compare_tab:
+    with chat_tab:
         st.divider()
-        st.subheader('🧪 Đánh giá đối chứng tự động (giới tính)')
-        st.caption('Hai tên được hoán đổi vai trò nam/nữ, mỗi lần gọi AI là một '
-                   'hội thoại độc lập. Kết quả chỉ là bằng chứng thăm dò.')
+        st.subheader('🧪 Kiểm tra thiên kiến bằng nhiều lần thử')
+        st.caption('Ngay trong Demo Chat: chạy hai phiên bản Nam là Minh / Nam là Lan '
+                   'với nhiều lượt độc lập, thay vì kết luận từ một câu trả lời. '
+                   'Bài thử dùng prompt chuẩn riêng, không tự động đánh giá mọi prompt nhập tay.')
         repeats = st.select_slider('Số lượt mỗi phiên bản',
                                    options=[2, 5, 10, 20],
                                    value=10, key='chat_demo_repeats')
