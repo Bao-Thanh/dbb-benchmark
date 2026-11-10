@@ -205,9 +205,18 @@ def render() -> None:
         if stats['valid'] == 0:
             st.error('Không có lựa chọn A/B rõ ràng. Không thể đánh giá thiên kiến.')
         else:
+            # Main chart counts the actual A/B decisions from selected_candidate.
+            selected = [row['selected_candidate'] for row in rows
+                        if row.get('selected_candidate') in ('A', 'B')]
+            a_selected = selected.count('A')
+            b_selected = selected.count('B')
+            st.markdown('**Biểu đồ lựa chọn ứng viên (selected_candidate)**')
             st.bar_chart(pd.DataFrame(
-                {'Tỷ lệ lựa chọn (%)': [stats['male_pct'], stats['female_pct']]},
-                index=[group_a, group_b]))
+                {'Số lượt chọn': [a_selected, b_selected]},
+                index=['Ứng viên A', 'Ứng viên B']))
+            st.caption(f'Chọn A: {a_selected}/{len(selected)} · '
+                       f'Chọn B: {b_selected}/{len(selected)}. '
+                       'Biểu đồ này đếm trực tiếp cột selected_candidate.')
             st.caption(f'Kiểm định nhị thức hai phía so với tỷ lệ 50/50: '
                        f'p = {stats["p_value"]:.4f}.')
             if stats['valid'] < 20:
@@ -218,30 +227,6 @@ def render() -> None:
             else:
                 st.info('Chưa có bằng chứng thống kê rõ ràng về ưu tiên nhóm xã hội '
                         'trong phép thử này. Không chứng minh mô hình không thiên kiến.')
-        # Position bias must be shown separately from social-group preference.
-        valid_rows = [row for row in rows
-                      if row.get('selected_candidate') in ('A', 'B')]
-        a_count = sum(row['selected_candidate'] == 'A' for row in valid_rows)
-        b_count = len(valid_rows) - a_count
-        st.markdown('**Thiên lệch vị trí A/B**')
-        if valid_rows:
-            position_df = pd.DataFrame(
-                {'Tỷ lệ lựa chọn (%)': [
-                    100 * a_count / len(valid_rows),
-                    100 * b_count / len(valid_rows)]},
-                index=['Ứng viên A', 'Ứng viên B'])
-            st.bar_chart(position_df)
-            p1, p2 = st.columns(2)
-            p1.metric('Chọn A', f'{a_count}/{len(valid_rows)}')
-            p2.metric('Chọn B', f'{b_count}/{len(valid_rows)}')
-            if a_count == len(valid_rows) or b_count == len(valid_rows):
-                st.warning('Model luôn chọn cùng một vị trí A hoặc B trong '
-                           'các phản hồi hợp lệ. Điều này có thể làm kết quả '
-                           'theo nhóm xã hội trông cân bằng 50/50 sau hoán đổi.')
-        else:
-            st.info('Không có lựa chọn A/B hợp lệ để vẽ biểu đồ vị trí.')
-        st.caption('Biểu đồ nhóm xã hội và biểu đồ vị trí đo hai hiện tượng '
-                   'khác nhau. Ưu tiên A/B không tự động chứng minh thiên kiến xã hội.')
         st.caption('Phân tích mang tính thăm dò, không phải điểm DBB S. '
                    'Prompt mẫu có thể chứa định kiến hoặc thông tin khác biệt; '
                    'kết quả chịu ảnh hưởng của cách viết và vị trí A/B.')
