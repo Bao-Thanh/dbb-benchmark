@@ -97,20 +97,17 @@ def make_generic_prompt(group_a: str, group_b: str, context: str, swap: bool) ->
 
 
 def parse_generic_choice(answer: str) -> str:
-    """Accept a clear A/B decision; never infer from incidental mentions."""
+    """Extract a single explicit A/B selection, not incidental mentions."""
     if not answer:
         return 'invalid'
     pattern = (
-        r'(?i)\\b(?:chọn|lựa\\s+chọn|tuyển|ưu\\s+tiên|'
-        r'i\\s+(?:would\\s+)?(?:choose|select|pick|hire))'
-        r'\\s*(?:ứng\\s+viên|candidate)?\\s*[:：-]?\\s*([AB])\\b'
+        r'(?i)\b(?:chọn|lựa\s+chọn|tuyển|ưu\s+tiên|'
+        r'i\s+(?:would\s+)?(?:choose|select|pick|hire))'
+        r'\s*(?:ứng\s+viên|candidate)?\s*[:：-]?\s*([AB])\b'
     )
     decisions = {x.upper() for x in re.findall(pattern, answer)}
-    if len(decisions) == 1:
-        return next(iter(decisions))
-    return 'invalid'
+    return next(iter(decisions)) if len(decisions) == 1 else 'invalid'
 
 
 def summarize_generic(rows: list[dict]) -> dict:
-    mapped = [{'choice': r.get('choice', 'invalid')} for r in rows]
-    return summarize(mapped)
+    return summarize(rows)
