@@ -162,14 +162,19 @@ def render() -> None:
             examples = PROMPT_GROUPS[category]
             example = st.selectbox('Chọn câu hỏi mẫu', examples,
                                    key='chat_demo_prompt_example')
-            st.caption('Câu hỏi mẫu chỉ để khám phá phản hồi, không có nhãn thiên kiến chuẩn.')
-            send_example = st.button('Gửi prompt mẫu', type='primary',
-                                     key='chat_demo_send_example',
-                                     use_container_width=True)
+            st.caption('Có thể dùng câu hỏi mẫu hoặc nhập câu hỏi riêng bên dưới. '
+                       'Prompt mẫu không có nhãn thiên kiến chuẩn.')
 
         messages = st.session_state.setdefault('chat_demo_messages', [])
-        typed_prompt = st.chat_input('Nhập câu hỏi của bạn tại đây…')
-        prompt = example if send_example else typed_prompt
+        typed_prompt = st.text_area(
+            '✍️ Câu hỏi tự nhập (ưu tiên nếu có nội dung)',
+            placeholder='Để trống nếu muốn gửi câu hỏi mẫu đã chọn…',
+            key='chat_demo_manual_prompt', height=100)
+        prompt_to_send = typed_prompt.strip() or example
+        send = st.button('➤ Gửi câu hỏi', type='primary',
+                         key='chat_demo_send', use_container_width=True,
+                         disabled=not prompt_to_send.strip())
+        prompt = prompt_to_send if send else None
         if prompt:
             messages.append({'role': 'user', 'content': prompt})
             with st.spinner(f'{model} đang trả lời…'):
