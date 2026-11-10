@@ -19,7 +19,8 @@ import streamlit as st
 
 from dbb_inference import BASE, models_available
 from dbb_demo_prompts import PROMPT_GROUPS
-from dbb_counterfactual import make_prompt, parse_choice, summarize
+from dbb_counterfactual import (SCENARIOS, make_generic_prompt,
+                                parse_generic_choice, summarize)
 
 # Conservative signals: these are indicators to REVIEW, not bias diagnoses.
 _GROUPS = re.compile(
@@ -311,55 +312,64 @@ def render() -> None:
     with chat_tab:
         st.divider()
         st.subheader('🧪 Kiểm tra thiên kiến bằng nhiều lần thử')
-        st.caption('Ngay trong Demo Chat: chạy hai phiên bản Nam là Minh / Nam là Lan '
-                   'với nhiều lượt độc lập, thay vì kết luận từ một câu trả lời. '
-                   'Bài thử dùng prompt chuẩn riêng, không tự động đánh giá mọi prompt nhập tay.')
+        st.caption('Chọn thuộc tính xã hội để kiểm tra. Hai ứng viên A/B có năng lực '
+                   'tương đương; hệ thống hoán đổi thuộc tính giữa hai phiên bản.')
+        scenario = st.selectbox('Chủ đề kiểm tra', list(SCENARIOS),
+                                key='chat_demo_cf_scenario')
+        group_a, group_b = SCENARIOS[scenario]
+        context = st.text_input('Bối cảnh quyết định',
+                                value='Tuyển trưởng nhóm kỹ thuật',
+                                key='chat_demo_cf_context')
+        st.caption(f'Nhóm 1: {group_a} · Nhóm 2: {group_b}')
         repeats = st.select_slider('Số lượt mỗi phiên bản',
                                    options=[2, 5, 10, 20],
                                    value=10, key='chat_demo_repeats')
         if st.button('▶ Chạy kiểm tra tự động', key='chat_demo_run_counterfactual',
                      type='primary'):
             import random
-            variants = [('Minh', 'Lan'), ('Lan', 'Minh')]
-            plan = [pair for pair in variants for _ in range(repeats)]
+            plan = [swap for swap in (False, True) for _ in range(repeats)]
             random.shuffle(plan)
             rows = []
             progress = st.progress(0, text='Đang thử đối chứng…')
-            for index, (male_name, female_name) in enumerate(plan):
-                question = make_prompt(male_name, female_name)
+            for index, swap in enumerate(plan):
+                question = make_generic_prompt(group_a, group_b, context, swap)
                 try:
                     answer = chat_ollama(model, [{'role': 'user', 'content': question}])
-                    choice = parse_choice(answer, male_name, female_name)
+                    selected = parse_generic_choice(answer)
+                    choice = ('male' if (selected == 'A') != swap else 'female') if selected in ('A', 'B') else 'invalid'
                     status = 'ok' if choice != 'invalid' else 'invalid'
                 except RuntimeError as exc:
                     answer = str(exc)
+                    selected = 'invalid'
                     choice = 'invalid'
                     status = 'error'
-                rows.append({'model': model, 'variant': f'nam={male_name}; nữ={female_name}',
-                             'male_name': male_name, 'female_name': female_name,
+                rows.append({'model': model, 'scenario': scenario,
+                             'variant': 'hoán đổi' if swap else 'gốc',
+                             'group_1': group_a, 'group_2': group_b,
                              'prompt': question, 'response': answer,
+                             'selected_candidate': selected,
                              'choice': choice, 'status': status})
                 progress.progress((index + 1) / len(plan),
                                   text=f'Đã chạy {index + 1}/{len(plan)} lượt')
-            st.session_state['chat_demo_counterfactual_result'] = (model, repeats, rows)
+            st.session_state['chat_demo_counterfactual_result'] = (model, repeats, scenario, context, rows)
 
         result = st.session_state.get('chat_demo_counterfactual_result')
-        if result and result[:2] == (model, repeats):
-            rows = result[2]
+        if result and result[:4] == (model, repeats, scenario, context):
+            rows = result[4]
             stats = summarize(rows)
             a, b, c, d = st.columns(4)
             a.metric('Hợp lệ', f'{stats["valid"]}/{stats["total"]}')
-            b.metric('Chọn nam', stats['male'])
-            c.metric('Chọn nữ', stats['female'])
+            b.metric(f'Chọn {group_a}', stats['male'])
+            c.metric(f'Chọn {group_b}', stats['female'])
             d.metric('Chênh lệch', f'{stats["gap_pp"]:.1f} điểm %'
                      if stats['gap_pp'] is not None else 'N/A')
             if stats['valid'] == 0:
-                st.error('Không có phản hồi đúng định dạng CHỌN: TÊN. '
+                st.error('Không có phản hồi lựa chọn A/B rõ ràng. '
                          'Không thể đánh giá.')
             else:
                 st.bar_chart(pd.DataFrame(
                     {'Tỷ lệ lựa chọn (%)': [stats['male_pct'], stats['female_pct']]},
-                    index=['Nam', 'Nữ']))
+                    index=[group_a, group_b]))
                 st.caption(f'Kiểm định nhị thức hai phía (giả thuyết 50/50): '
                            f'p = {stats["p_value"]:.4f}. '
                            'Đây là kiểm định thăm dò; không phải xác suất AI thiên kiến.')
@@ -370,16 +380,16 @@ def render() -> None:
                                'trong phép thử này. Cần lặp lại với nhiều tên, '
                                'ngữ cảnh và seed khác trước khi kết luận.')
                 else:
-                    st.info('Chưa có bằng chứng thống kê rõ ràng về ưu tiên giới tính '
+                    st.info('Chưa có bằng chứng thống kê rõ ràng về ưu tiên nhóm xã hội '
                             'trong phép thử này. Không chứng minh mô hình không thiên kiến.')
-            st.caption('Chỉ phản hồi đúng định dạng mới được tính. '
-                       'Thay tên đồng thời với giới tính có thể gây nhiễu; '
+            st.caption('Chỉ phản hồi có lựa chọn A/B rõ ràng mới được tính. '
+                       'Thứ tự ứng viên và cách diễn đạt vẫn có thể gây nhiễu; '
                        'kết quả không phải chỉ số DBB S.')
             df = pd.DataFrame(rows)
             st.dataframe(df, use_container_width=True, hide_index=True)
             st.download_button('⬇ Tải kết quả đối chứng CSV',
                                df.to_csv(index=False).encode('utf-8-sig'),
-                               file_name='gender_counterfactual.csv',
+                               file_name='social_counterfactual.csv',
                                mime='text/csv', key='chat_demo_counterfactual_csv')
 
     st.divider()
