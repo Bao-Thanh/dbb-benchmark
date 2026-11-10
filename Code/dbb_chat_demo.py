@@ -205,8 +205,10 @@ def render() -> None:
                     st.warning('⚠️ Cần kiểm tra tính công bằng của lựa chọn')
                     st.write(decision['reason'])
                 if signals['count']:
-                    st.warning(f'{signals["count"]} đoạn có dấu hiệu khái quát hóa 
-                               'về nhóm xã hội — cần con người xem xét.')
+                    st.warning(
+                        f'{signals["count"]} đoạn có dấu hiệu khái quát hóa '
+                        'về nhóm xã hội — cần con người xem xét.'
+                    )
                     with st.expander('Xem đoạn được đánh dấu'):
                         for snippet in signals['signals']:
                             st.code(snippet, language=None)
