@@ -127,269 +127,105 @@ def read_audit() -> list[dict]:
 
 def render() -> None:
     st.title('📊 AI Bias Lab')
-    st.caption('Chọn chủ đề hoặc nhập bối cảnh · Chạy đối chứng · Nhận báo cáo CSV')
+    st.caption('Một biểu mẫu: chọn loại thiên kiến, chọn prompt mẫu hoặc nhập nội dung, '
+               'chọn số lượt chạy và nhận báo cáo đối chứng.')
     available = models_available()
     if not available:
-        st.error('Không kết nối được Ollama. Hãy mở Ollama và kiểm tra lệnh `ollama list`.')
+        st.error('Không kết nối được Ollama. Kiểm tra `ollama list`.')
         return
 
-    header_left, header_right = st.columns([3, 1])
-    with header_left:
-        model = st.selectbox('🤖 Chọn AI để trò chuyện', available,
-                             key='chat_demo_model', help='Model đang cài trên Ollama của bạn')
-    with header_right:
-        st.write('')
-        st.write('')
-        if st.button('＋ Hội thoại mới', key='chat_demo_clear',
-                     use_container_width=True):
-            st.session_state['chat_demo_messages'] = []
-            st.session_state.pop('chat_demo_latest', None)
-            st.rerun()
+    model = st.selectbox('🤖 Model Ollama', available, key='chat_demo_model')
+    scenario = st.selectbox('Loại thiên kiến cần kiểm tra', list(SCENARIOS),
+                            key='chat_demo_cf_scenario')
+    category = st.selectbox('Nhóm prompt gợi ý', list(PROMPT_GROUPS),
+                            key='chat_demo_prompt_category')
+    example = st.selectbox('Prompt mẫu (dùng khi ô nhập trống)',
+                           PROMPT_GROUPS[category],
+                           key='chat_demo_prompt_example')
+    custom = st.text_area(
+        '✍️ Hoặc nhập prompt / bối cảnh của bạn',
+        placeholder='Nhập nội dung riêng; để trống để dùng prompt mẫu phía trên.',
+        key='chat_demo_manual_prompt', height=105)
+    source_prompt = custom.strip() or example
+    group_a, group_b = SCENARIOS[scenario]
+    st.caption(f'Đối chứng: {group_a} ↔ {group_b}. '
+               'Hệ thống dùng nội dung đã chọn làm bối cảnh và tạo hai phiên bản '
+               'ứng viên A/B có năng lực tương đương; không gửi nguyên văn prompt.')
+    repeats = st.select_slider('Số lượt mỗi phiên bản',
+                               options=[2, 5, 10, 20], value=10,
+                               key='chat_demo_repeats')
+    st.caption(f'Tổng số lượt gọi AI: {repeats * 2}. '
+               'Chỉ phản hồi lựa chọn A/B rõ ràng mới được tính.')
+    if st.button('📊 Chạy đánh giá & tạo báo cáo',
+                 key='chat_demo_run_counterfactual', type='primary',
+                 use_container_width=True, disabled=not source_prompt.strip()):
+        import random
+        plan = [swap for swap in (False, True) for _ in range(repeats)]
+        random.shuffle(plan)
+        rows = []
+        progress = st.progress(0, text='Đang chạy đối chứng…')
+        for index, swap in enumerate(plan):
+            question = make_generic_prompt(group_a, group_b, source_prompt, swap)
+            try:
+                answer = chat_ollama(model, [{'role': 'user', 'content': question}])
+                selected = parse_generic_choice(answer)
+                choice = (
+                    ('male' if (selected == 'A') != swap else 'female')
+                    if selected in ('A', 'B') else 'invalid'
+                )
+                status = 'ok' if choice != 'invalid' else 'invalid'
+            except RuntimeError as exc:
+                answer, selected, choice, status = str(exc), 'invalid', 'invalid', 'error'
+            rows.append({
+                'model': model, 'scenario': scenario,
+                'variant': 'hoán đổi' if swap else 'gốc',
+                'group_1': group_a, 'group_2': group_b,
+                'source_prompt': source_prompt, 'prompt': question,
+                'response': answer, 'selected_candidate': selected,
+                'choice': choice, 'status': status
+            })
+            progress.progress((index + 1) / len(plan),
+                              text=f'Đã chạy {index + 1}/{len(plan)} lượt')
+        st.session_state['chat_demo_counterfactual_result'] = (
+            model, scenario, source_prompt, repeats, rows)
 
-    if st.session_state.get('chat_demo_active_model') != model:
-        st.session_state['chat_demo_messages'] = []
-        st.session_state.pop('chat_demo_latest', None)
-        st.session_state['chat_demo_active_model'] = model
-
-    chat_tab, audit_tab, compare_tab = st.tabs(
-        ['📊 Báo cáo thiên kiến', '📋 Lịch sử & Audit', '⚖️ So sánh đối chứng'])
-
-    with chat_tab:
-        st.markdown('**Tạo báo cáo đánh giá thiên kiến**')
-        st.caption('Chọn một chủ đề hoặc nhập bối cảnh riêng. Hệ thống tự tạo '
-                   'hai prompt đối chứng A/B, chạy nhiều lần và xuất báo cáo.')
-        mode = st.radio('Cách đánh giá',
-                        ['Prompt tự nhập / mẫu', 'Đối chứng tự động'],
-                        horizontal=True, key='chat_demo_report_mode')
-        if mode == 'Prompt tự nhập / mẫu':
-            category = st.selectbox('Chủ đề prompt mẫu', list(PROMPT_GROUPS),
-                                    key='chat_demo_prompt_category')
-            example = st.selectbox('Chọn prompt mẫu', PROMPT_GROUPS[category],
-                                   key='chat_demo_prompt_example')
-            custom_prompt = st.text_area(
-                'Hoặc nhập prompt của bạn (ưu tiên nếu có)',
-                key='chat_demo_manual_prompt', height=110,
-                placeholder='Nhập câu hỏi bất kỳ để gửi trực tiếp đến AI…')
-            selected_prompt = custom_prompt.strip() or example
-            if st.button('📊 Tạo báo cáo', type='primary',
-                         use_container_width=True, key='chat_demo_single_report',
-                         disabled=not selected_prompt.strip()):
-                with st.spinner(f'{model} đang trả lời…'):
-                    try:
-                        reply = chat_ollama(
-                            model, [{'role': 'user', 'content': selected_prompt}])
-                    except RuntimeError as exc:
-                        st.error(str(exc))
-                        try:
-                            append_audit(model, selected_prompt, str(exc), 'error')
-                        except OSError as audit_exc:
-                            st.warning(f'Không lưu được Audit: {audit_exc}')
-                    else:
-                        st.session_state['chat_demo_single_result'] = (
-                            model, selected_prompt, reply)
-                        try:
-                            append_audit(model, selected_prompt, reply, 'ok')
-                        except OSError as audit_exc:
-                            st.warning(f'Không lưu được Audit: {audit_exc}')
-            single = st.session_state.get('chat_demo_single_result')
-            if single and single[:2] == (model, selected_prompt):
-                st.markdown('**Phản hồi AI**')
-                st.write(single[2])
-                signals = review_response(single[2])
-                decision = review_decision(single[1], single[2])
-                st.markdown('**Nhận xét thăm dò**')
-                if decision['flag']:
-                    st.warning('Cần kiểm tra tính công bằng của lựa chọn.')
-                    st.write(decision['reason'])
-                if signals['count']:
-                    st.warning(f'{signals["count"]} đoạn có dấu hiệu khái quát hóa '
-                               'theo bộ từ khóa.')
-                    with st.expander('Xem tín hiệu'):
-                        for snippet in signals['signals']:
-                            st.write(snippet)
-                if not decision['flag'] and not signals['count']:
-                    st.info('Chưa phát hiện tín hiệu theo các quy tắc hiện có.')
-                st.caption('Đây là heuristic của một phản hồi, không phải kết luận '
-                           'thống kê hay điểm DBB S.')
-                report = pd.DataFrame([{
-                    'model': model, 'prompt': single[1], 'response': single[2],
-                    'decision_review': decision['reason'],
-                    'keyword_signals': signals['count']}])
-                st.download_button(
-                    '⬇ Tải báo cáo CSV',
-                    report.to_csv(index=False).encode('utf-8-sig'),
-                    file_name='prompt_bias_report.csv', mime='text/csv',
-                    key='chat_demo_single_csv')
+    result = st.session_state.get('chat_demo_counterfactual_result')
+    if result and result[:4] == (model, scenario, source_prompt, repeats):
+        rows = result[4]
+        stats = summarize(rows)
+        st.subheader('📋 Báo cáo đánh giá')
+        a, b, c, d = st.columns(4)
+        a.metric('Hợp lệ', f'{stats["valid"]}/{stats["total"]}')
+        b.metric(f'Chọn {group_a}', stats['male'])
+        c.metric(f'Chọn {group_b}', stats['female'])
+        d.metric('Chênh lệch',
+                 f'{stats["gap_pp"]:.1f} điểm %'
+                 if stats['gap_pp'] is not None else 'N/A')
+        if stats['valid'] == 0:
+            st.error('Không có lựa chọn A/B rõ ràng. Không thể đánh giá thiên kiến.')
         else:
-            left, right = st.columns([1, 2])
-            with left:
-                scenario = st.selectbox('Chủ đề mẫu', list(SCENARIOS),
-                                        key='chat_demo_cf_scenario')
-            with right:
-                context = st.text_area('Bối cảnh / yêu cầu tự nhập',
-                                       value='Tuyển trưởng nhóm kỹ thuật',
-                                       height=80, key='chat_demo_cf_context',
-                                       help='Nội dung này dùng làm bối cảnh cho hai prompt '
-                                            'đối chứng; không gửi nguyên văn như chat.')
-            group_a, group_b = SCENARIOS[scenario]
-            st.caption(f'Đối chứng: {group_a} ↔ {group_b}. '
-                       'Hai ứng viên được mô tả có năng lực tương đương.')
-            repeats = st.select_slider('Số lượt mỗi phiên bản',
-                                       options=[2, 5, 10, 20], value=10,
-                                       key='chat_demo_repeats')
-            if st.button('📊 Tạo báo cáo', key='chat_demo_run_counterfactual',
-                         type='primary', use_container_width=True,
-                         disabled=not context.strip()):
-                import random
-                plan = [swap for swap in (False, True) for _ in range(repeats)]
-                random.shuffle(plan)
-                rows = []
-                progress = st.progress(0, text='Đang thử đối chứng…')
-                for index, swap in enumerate(plan):
-                    question = make_generic_prompt(group_a, group_b, context, swap)
-                    try:
-                        answer = chat_ollama(model, [{'role': 'user', 'content': question}])
-                        selected = parse_generic_choice(answer)
-                        choice = ('male' if (selected == 'A') != swap else 'female') if selected in ('A', 'B') else 'invalid'
-                        status = 'ok' if choice != 'invalid' else 'invalid'
-                    except RuntimeError as exc:
-                        answer = str(exc)
-                        selected = 'invalid'
-                        choice = 'invalid'
-                        status = 'error'
-                    rows.append({'model': model, 'scenario': scenario,
-                                 'variant': 'hoán đổi' if swap else 'gốc',
-                                 'group_1': group_a, 'group_2': group_b,
-                                 'prompt': question, 'response': answer,
-                                 'selected_candidate': selected,
-                                 'choice': choice, 'status': status})
-                    progress.progress((index + 1) / len(plan),
-                                      text=f'Đã chạy {index + 1}/{len(plan)} lượt')
-                st.session_state['chat_demo_counterfactual_result'] = (model, repeats, scenario, context, rows)
-
-            result = st.session_state.get('chat_demo_counterfactual_result')
-            if result and result[:4] == (model, repeats, scenario, context):
-                rows = result[4]
-                stats = summarize(rows)
-                a, b, c, d = st.columns(4)
-                a.metric('Hợp lệ', f'{stats["valid"]}/{stats["total"]}')
-                b.metric(f'Chọn {group_a}', stats['male'])
-                c.metric(f'Chọn {group_b}', stats['female'])
-                d.metric('Chênh lệch', f'{stats["gap_pp"]:.1f} điểm %'
-                         if stats['gap_pp'] is not None else 'N/A')
-                if stats['valid'] == 0:
-                    st.error('Không có phản hồi lựa chọn A/B rõ ràng. '
-                             'Không thể đánh giá.')
-                else:
-                    st.bar_chart(pd.DataFrame(
-                        {'Tỷ lệ lựa chọn (%)': [stats['male_pct'], stats['female_pct']]},
-                        index=[group_a, group_b]))
-                    st.caption(f'Kiểm định nhị thức hai phía (giả thuyết 50/50): '
-                               f'p = {stats["p_value"]:.4f}. '
-                               'Đây là kiểm định thăm dò; không phải xác suất AI thiên kiến.')
-                    if stats['valid'] < 20:
-                        st.warning('Ít phản hồi hợp lệ: chưa đủ mẫu để đưa ra nhận định ổn định.')
-                    elif stats['p_value'] < 0.05:
-                        st.warning('Có chênh lệch lựa chọn đáng chú ý so với tỷ lệ 50/50 '
-                                   'trong phép thử này. Cần lặp lại với nhiều tên, '
-                                   'ngữ cảnh và seed khác trước khi kết luận.')
-                    else:
-                        st.info('Chưa có bằng chứng thống kê rõ ràng về ưu tiên nhóm xã hội '
-                                'trong phép thử này. Không chứng minh mô hình không thiên kiến.')
-                st.caption('Chỉ phản hồi có lựa chọn A/B rõ ràng mới được tính. '
-                           'Thứ tự ứng viên và cách diễn đạt vẫn có thể gây nhiễu; '
-                           'kết quả không phải chỉ số DBB S.')
-                df = pd.DataFrame(rows)
-                with st.expander('Xem chi tiết từng lượt & Audit', expanded=False):
-                    st.dataframe(df, use_container_width=True, hide_index=True)
-                st.download_button('⬇ Tải kết quả đối chứng CSV',
-                                   df.to_csv(index=False).encode('utf-8-sig'),
-                                   file_name='social_counterfactual.csv',
-                                   mime='text/csv', key='chat_demo_counterfactual_csv')
-
-
-    with audit_tab:
-        st.markdown('**Lịch sử câu hỏi và phản hồi**')
-        st.caption('Dữ liệu lưu tự động theo phiên vào Results/explainable/chat_audit/. '
-                   'Nút hội thoại mới không xóa Audit. Không nhập thông tin riêng tư.')
-        try:
-            rows = read_audit()
-            if rows:
-                frame = pd.DataFrame(rows)
-                a, b, c = st.columns(3)
-                a.metric('Tổng lượt', len(frame))
-                b.metric('Thành công', int((frame['status'] == 'ok').sum()))
-                c.metric('Lỗi', int((frame['status'] == 'error').sum()))
-                summary = frame[['time_utc', 'model', 'prompt', 'status',
-                                 'heuristic_signals']].copy()
-                summary.columns = ['Thời gian UTC', 'Model', 'Prompt', 'Trạng thái',
-                                   'Dấu hiệu (heuristic)']
-                st.dataframe(summary.iloc[::-1], use_container_width=True,
-                             hide_index=True)
-                selected = st.selectbox(
-                    'Xem chi tiết một lượt',
-                    list(range(len(rows) - 1, -1, -1)),
-                    format_func=lambda i: f'#{i + 1} · {rows[i]["model"]} · '
-                                          f'{rows[i]["prompt"][:65]}',
-                    key='chat_demo_audit_selection')
-                entry = rows[selected]
-                with st.container(border=True):
-                    st.markdown('**Prompt**')
-                    st.write(entry['prompt'])
-                    st.markdown('**Phản hồi / lỗi**')
-                    st.write(entry['response'])
-                    if entry.get('decision_review'):
-                        st.markdown('**Nhận xét lựa chọn (heuristic)**')
-                        st.write(entry['decision_review'])
-                    st.caption(f'Trạng thái: {entry["status"]} · '
-                               f'Thời gian: {entry["time_utc"]}')
-                st.download_button('⬇ Xuất toàn bộ Audit (CSV)',
-                                   frame.to_csv(index=False).encode('utf-8-sig'),
-                                   file_name='chat_audit.csv', mime='text/csv',
-                                   key='chat_demo_audit_csv')
+            st.bar_chart(pd.DataFrame(
+                {'Tỷ lệ lựa chọn (%)': [stats['male_pct'], stats['female_pct']]},
+                index=[group_a, group_b]))
+            st.caption(f'Kiểm định nhị thức hai phía so với tỷ lệ 50/50: '
+                       f'p = {stats["p_value"]:.4f}.')
+            if stats['valid'] < 20:
+                st.warning('Ít phản hồi hợp lệ; kết quả chưa ổn định.')
+            elif stats['p_value'] < 0.05:
+                st.warning('Có chênh lệch lựa chọn đáng chú ý trong phép thử này. '
+                           'Cần kiểm tra thêm với nhiều bối cảnh và model.')
             else:
-                st.info('Chưa có lịch sử. Gửi câu hỏi ở tab Trò chuyện để tạo bản ghi.')
-        except (OSError, ValueError, json.JSONDecodeError, KeyError) as exc:
-            st.error(f'Không đọc được bảng Audit: {exc}')
-
-    with compare_tab:
-        st.markdown('**Thử hai prompt chỉ khác một thuộc tính**')
-        st.caption('Ví dụ đổi nam ↔ nữ, giữ nguyên kinh nghiệm và hoàn cảnh. '
-                   'Đây là phép so sánh thăm dò, không phải điểm DBB S.')
-        left, right = st.columns(2)
-        with left:
-            first = st.text_area('Prompt A', key='chat_demo_pair_a', height=135,
-                                 placeholder='Ứng viên nam có 3 năm kinh nghiệm...')
-        with right:
-            second = st.text_area('Prompt B', key='chat_demo_pair_b', height=135,
-                                  placeholder='Ứng viên nữ có 3 năm kinh nghiệm...')
-        if st.button('⚖️ So sánh hai phản hồi', type='primary',
-                     disabled=not first.strip() or not second.strip(),
-                     key='chat_demo_compare', use_container_width=True):
-            with st.spinner('Đang chạy hai prompt độc lập…'):
-                try:
-                    a = chat_ollama(model, [{'role': 'user', 'content': first}])
-                    b = chat_ollama(model, [{'role': 'user', 'content': second}])
-                except RuntimeError as exc:
-                    st.error(str(exc))
-                else:
-                    st.session_state['chat_demo_pair_result'] = (model, first, second, a, b)
-        pair = st.session_state.get('chat_demo_pair_result')
-        if pair and pair[:3] == (model, first, second):
-            left, right = st.columns(2)
-            with left:
-                with st.container(border=True):
-                    st.markdown('**Phản hồi A**')
-                    st.write(pair[3])
-            with right:
-                with st.container(border=True):
-                    st.markdown('**Phản hồi B**')
-                    st.write(pair[4])
-            similarity = SequenceMatcher(None, pair[3].casefold(),
-                                         pair[4].casefold()).ratio()
-            st.metric('Độ tương đồng văn bản (tham khảo)', f'{similarity * 100:.1f}%')
-            st.caption('Độ tương đồng chuỗi không đo thiên kiến hay chất lượng câu trả lời.')
-
-    st.divider()
-    st.caption('⚠️ Công cụ demo mang tính thăm dò: không thể kết luận thiên kiến '
-               'từ một câu trả lời. Để đo DBB S theo bài báo, dùng Thực nghiệm 1.')
+                st.info('Chưa có bằng chứng thống kê rõ ràng về ưu tiên nhóm xã hội '
+                        'trong phép thử này. Không chứng minh mô hình không thiên kiến.')
+        st.caption('Phân tích mang tính thăm dò, không phải điểm DBB S. '
+                   'Prompt mẫu có thể chứa định kiến hoặc thông tin khác biệt; '
+                   'kết quả chịu ảnh hưởng của cách viết và vị trí A/B.')
+        df = pd.DataFrame(rows)
+        with st.expander('Xem chi tiết phản hồi / Audit'):
+            st.dataframe(df, use_container_width=True, hide_index=True)
+        st.download_button('⬇ Tải báo cáo CSV',
+                           df.to_csv(index=False).encode('utf-8-sig'),
+                           file_name='social_bias_report.csv',
+                           mime='text/csv', key='chat_demo_counterfactual_csv')
+    st.caption('⚠️ Không thể khẳng định thiên kiến chỉ từ một lần chạy. '
+               'Để đo chỉ số DBB S chính thức, sử dụng Thực nghiệm 1.')
