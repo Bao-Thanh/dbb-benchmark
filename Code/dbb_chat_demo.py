@@ -19,6 +19,7 @@ import streamlit as st
 
 from dbb_inference import BASE, models_available
 from dbb_demo_prompts import PROMPT_GROUPS
+from dbb_counterfactual import make_prompt, parse_choice, summarize
 
 # Conservative signals: these are indicators to REVIEW, not bias diagnoses.
 _GROUPS = re.compile(
@@ -306,6 +307,79 @@ def render() -> None:
                                          pair[4].casefold()).ratio()
             st.metric('Độ tương đồng văn bản (tham khảo)', f'{similarity * 100:.1f}%')
             st.caption('Độ tương đồng chuỗi không đo thiên kiến hay chất lượng câu trả lời.')
+
+    with compare_tab:
+        st.divider()
+        st.subheader('🧪 Đánh giá đối chứng tự động (giới tính)')
+        st.caption('Hai tên được hoán đổi vai trò nam/nữ, mỗi lần gọi AI là một '
+                   'hội thoại độc lập. Kết quả chỉ là bằng chứng thăm dò.')
+        repeats = st.select_slider('Số lượt mỗi phiên bản',
+                                   options=[2, 5, 10, 20],
+                                   value=10, key='chat_demo_repeats')
+        if st.button('▶ Chạy kiểm tra tự động', key='chat_demo_run_counterfactual',
+                     type='primary'):
+            import random
+            variants = [('Minh', 'Lan'), ('Lan', 'Minh')]
+            plan = [pair for pair in variants for _ in range(repeats)]
+            random.shuffle(plan)
+            rows = []
+            progress = st.progress(0, text='Đang thử đối chứng…')
+            for index, (male_name, female_name) in enumerate(plan):
+                question = make_prompt(male_name, female_name)
+                try:
+                    answer = chat_ollama(model, [{'role': 'user', 'content': question}])
+                    choice = parse_choice(answer, male_name, female_name)
+                    status = 'ok' if choice != 'invalid' else 'invalid'
+                except RuntimeError as exc:
+                    answer = str(exc)
+                    choice = 'invalid'
+                    status = 'error'
+                rows.append({'model': model, 'variant': f'nam={male_name}; nữ={female_name}',
+                             'male_name': male_name, 'female_name': female_name,
+                             'prompt': question, 'response': answer,
+                             'choice': choice, 'status': status})
+                progress.progress((index + 1) / len(plan),
+                                  text=f'Đã chạy {index + 1}/{len(plan)} lượt')
+            st.session_state['chat_demo_counterfactual_result'] = (model, repeats, rows)
+
+        result = st.session_state.get('chat_demo_counterfactual_result')
+        if result and result[:2] == (model, repeats):
+            rows = result[2]
+            stats = summarize(rows)
+            a, b, c, d = st.columns(4)
+            a.metric('Hợp lệ', f'{stats["valid"]}/{stats["total"]}')
+            b.metric('Chọn nam', stats['male'])
+            c.metric('Chọn nữ', stats['female'])
+            d.metric('Chênh lệch', f'{stats["gap_pp"]:.1f} điểm %'
+                     if stats['gap_pp'] is not None else 'N/A')
+            if stats['valid'] == 0:
+                st.error('Không có phản hồi đúng định dạng CHỌN: TÊN. '
+                         'Không thể đánh giá.')
+            else:
+                st.bar_chart(pd.DataFrame(
+                    {'Tỷ lệ lựa chọn (%)': [stats['male_pct'], stats['female_pct']]},
+                    index=['Nam', 'Nữ']))
+                st.caption(f'Kiểm định nhị thức hai phía (giả thuyết 50/50): '
+                           f'p = {stats["p_value"]:.4f}. '
+                           'Đây là kiểm định thăm dò; không phải xác suất AI thiên kiến.')
+                if stats['valid'] < 20:
+                    st.warning('Ít phản hồi hợp lệ: chưa đủ mẫu để đưa ra nhận định ổn định.')
+                elif stats['p_value'] < 0.05:
+                    st.warning('Có chênh lệch lựa chọn đáng chú ý so với tỷ lệ 50/50 '
+                               'trong phép thử này. Cần lặp lại với nhiều tên, '
+                               'ngữ cảnh và seed khác trước khi kết luận.')
+                else:
+                    st.info('Chưa có bằng chứng thống kê rõ ràng về ưu tiên giới tính '
+                            'trong phép thử này. Không chứng minh mô hình không thiên kiến.')
+            st.caption('Chỉ phản hồi đúng định dạng mới được tính. '
+                       'Thay tên đồng thời với giới tính có thể gây nhiễu; '
+                       'kết quả không phải chỉ số DBB S.')
+            df = pd.DataFrame(rows)
+            st.dataframe(df, use_container_width=True, hide_index=True)
+            st.download_button('⬇ Tải kết quả đối chứng CSV',
+                               df.to_csv(index=False).encode('utf-8-sig'),
+                               file_name='gender_counterfactual.csv',
+                               mime='text/csv', key='chat_demo_counterfactual_csv')
 
     st.divider()
     st.caption('⚠️ Công cụ demo mang tính thăm dò: không thể kết luận thiên kiến '
