@@ -97,15 +97,21 @@ def make_generic_prompt(group_a: str, group_b: str, context: str, swap: bool) ->
 
 
 def parse_generic_choice(answer: str) -> str:
-    """Extract a single explicit A/B selection, not incidental mentions."""
+    """Parse a single explicit A/B choice, including bare A/B and English formats."""
     if not answer:
         return 'invalid'
-    pattern = (
+    value = answer.strip()
+    # A one-token reply is a valid explicit choice.
+    if re.fullmatch(r'(?i)[AB][.!]?', value):
+        return value[0].upper()
+    patterns = [
+        r'(?im)^\s*(?:CHỌN|CHOICE|ANSWER|OPTION)\s*[:：-]?\s*([AB])\b',
         r'(?i)\b(?:chọn|lựa\s+chọn|tuyển|ưu\s+tiên|'
         r'i\s+(?:would\s+)?(?:choose|select|pick|hire))'
-        r'\s*(?:ứng\s+viên|candidate)?\s*[:：-]?\s*([AB])\b'
-    )
-    decisions = {x.upper() for x in re.findall(pattern, answer)}
+        r'\s*(?:ứng\s+viên|candidate|option)?\s*[:：-]?\s*([AB])\b',
+    ]
+    decisions = {match.upper() for pattern in patterns
+                 for match in re.findall(pattern, value)}
     return next(iter(decisions)) if len(decisions) == 1 else 'invalid'
 
 
