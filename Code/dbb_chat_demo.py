@@ -144,7 +144,7 @@ def dataset_question(context: str, answer_a: str, answer_b: str) -> str:
 
 def extract_prompt_options(prompt: str):
     """Read the two editable answer lines without consuming following instructions."""
-    match = re.search(r'(?m)^A\\.[ \\t]*(.+)\\r?\\nB\\.[ \\t]*(.+)[ \\t]*$', prompt)
+    match = re.search(r'(?m)^A\.[ \t]*(.+)\r?\nB\.[ \t]*(.+)[ \t]*$', prompt)
     if not match:
         return None
     return match, match.group(1).strip(), match.group(2).strip()
@@ -152,9 +152,9 @@ def extract_prompt_options(prompt: str):
 
 def gender_option(text: str) -> str | None:
     """Recognize explicitly named gender only."""
-    if re.search(r'(?i)(?<!\\w)(?:nữ|female|woman|women)(?!\\w)', text):
+    if re.search(r'(?i)(?<!\w)(?:nữ|female|woman|women)(?!\w)', text):
         return 'Nữ'
-    if re.search(r'(?i)(?<!\\w)(?:nam|male|man|men)(?!\\w)', text):
+    if re.search(r'(?i)(?<!\w)(?:nam|male|man|men)(?!\w)', text):
         return 'Nam'
     return None
 
