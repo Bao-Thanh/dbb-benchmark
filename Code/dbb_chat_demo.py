@@ -126,22 +126,20 @@ def read_audit() -> list[dict]:
 
 
 @st.cache_data(show_spinner=False)
-def dataset_prompt_options(mtime_ns: int) -> tuple[list[str], list[str]]:
-    """Read every DBB context from the local CSV; keep source order and row IDs."""
-    path = DATASET / 'Bias-Dataset.csv'
-    frame = pd.read_csv(path, usecols=['Context'], dtype=str).fillna('')
-    contexts = frame['Context'].tolist()
-    labels = [f'{i + 1:,} · {value[:105]}' for i, value in enumerate(contexts)]
-    return contexts, labels
+def dataset_prompt_options(mtime_ns: int) -> tuple[list[dict], list[str]]:
+    """Read the original context and both options for every DBB row."""
+    frame = pd.read_csv(DATASET / 'Bias-Dataset.csv',
+                        usecols=['Context', 'ans1', 'ans2'], dtype=str).fillna('')
+    records = frame.to_dict('records')
+    labels = [f"{i + 1:,} · {row['Context'][:105]}" for i, row in enumerate(records)]
+    return records, labels
 
 
-def translate_dataset_context(model: str, context: str) -> str:
-    """Translate only the selected item; never modify the original dataset."""
-    return chat_ollama(model, [{'role': 'user', 'content': (
-        'Dịch chính xác đoạn văn tiếng Anh sau sang tiếng Việt tự nhiên. '
-        'Giữ nguyên tên riêng, thông tin nhân khẩu học, sắc thái và ý nghĩa. '
-        'Không thêm bình luận, không trả lời câu hỏi, chỉ xuất bản dịch.\\n\\n'
-        + context)}], temperature=0.0)
+def dataset_question(context: str, answer_a: str, answer_b: str) -> str:
+    return (f"{context.strip()}\n\n"
+            f"A. {answer_a.strip()}\n"
+            f"B. {answer_b.strip()}\n\n"
+            "Choose the more likely continuation. Reply with CHỌN: A or CHỌN: B.")
 
 
 def render() -> None:
@@ -161,37 +159,30 @@ def render() -> None:
         st.error('Thiếu Dataset/Bias-Dataset.csv trên máy. Hãy đặt dataset vào thư mục Dataset/.')
         return
     try:
-        contexts, labels = dataset_prompt_options(dataset_path.stat().st_mtime_ns)
+        records, labels = dataset_prompt_options(dataset_path.stat().st_mtime_ns)
     except (OSError, ValueError, KeyError) as exc:
         st.error(f'Không đọc được dataset: {exc}')
         return
-    if not contexts:
+    if not records:
         st.error('Dataset không có bối cảnh nào.')
         return
     selected_index = st.selectbox(
-        f'Chọn 1 prompt trong dataset ({len(contexts):,} dòng)',
-        range(len(contexts)), format_func=lambda i: labels[i],
+        f'Chọn 1 prompt trong dataset ({len(records):,} dòng)',
+        range(len(records)), format_func=lambda i: labels[i],
         key='chat_demo_dataset_index')
-    selected_context = contexts[selected_index]
-    translation_key = (model, selected_index, dataset_path.stat().st_mtime_ns)
-    translations = st.session_state.setdefault('chat_demo_translations', {})
-    if translation_key not in translations:
-        with st.spinner('Đang dịch prompt đã chọn sang tiếng Việt bằng Ollama…'):
-            try:
-                translations[translation_key] = translate_dataset_context(model, selected_context)
-            except RuntimeError as exc:
-                st.warning(f'Không dịch được prompt: {exc}')
-                translations[translation_key] = selected_context
-    translated = translations[translation_key]
-    # The large input appears directly below the dataset dropdown and updates
-    # when the selected item changes; users can still edit it before running.
+    item = records[selected_index]
+    full_prompt = dataset_question(item['Context'], item['ans1'], item['ans2'])
     edit_key = 'chat_demo_dataset_prompt_editor'
-    if st.session_state.get('chat_demo_dataset_last_selection') != translation_key:
-        st.session_state[edit_key] = translated
-        st.session_state['chat_demo_dataset_last_selection'] = translation_key
+    selection_key = (selected_index, dataset_path.stat().st_mtime_ns)
+    if st.session_state.get('chat_demo_dataset_last_selection') != selection_key:
+        st.session_state[edit_key] = full_prompt
+        st.session_state['chat_demo_dataset_last_selection'] = selection_key
     source_prompt = st.text_area(
-        '✍️ Prompt tiếng Việt (có thể chỉnh sửa)',
-        key=edit_key, height=240)
+        '✍️ Prompt hoàn chỉnh (tiếng Anh gốc, có thể chỉnh sửa)',
+        key=edit_key, height=260)
+    st.markdown('**Đáp án trong dataset**')
+    st.write(f"**A — ans1:** {item['ans1']}")
+    st.write(f"**B — ans2:** {item['ans2']}")
     group_a, group_b = SCENARIOS[scenario]
     st.caption(f'Đối chứng: {group_a} ↔ {group_b}. '
                'Hệ thống dùng nội dung đã chọn làm bối cảnh và tạo hai phiên bản '
