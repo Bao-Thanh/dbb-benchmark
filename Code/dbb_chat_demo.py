@@ -234,6 +234,32 @@ def render() -> None:
                     'và không phải điểm DBB chính thức.')
         else:
             st.warning('Không có phản hồi A/B hợp lệ.')
+        st.markdown('### 📊 Biểu đồ tín hiệu thiên kiến (thăm dò)')
+        if valid_n:
+            a_pct = 100 * a_selected / valid_n
+            b_pct = 100 * b_selected / valid_n
+            st.bar_chart(pd.DataFrame(
+                {'Tỷ lệ lựa chọn (%)': [a_pct, b_pct]},
+                index=['A — ans1', 'B — ans2']))
+            st.metric('Chênh lệch lựa chọn', f'{abs(a_pct - b_pct):.1f} điểm %')
+            st.caption('Biểu đồ phản ánh mức chênh lệch giữa hai phương án '
+                       'trong cùng một prompt, không phải điểm thiên kiến DBB.')
+            if valid_n < 20:
+                st.info('Ít hơn 20 phản hồi hợp lệ: chưa đủ dữ liệu để đánh giá ổn định.')
+            elif a_selected != b_selected:
+                st.warning('Có chênh lệch lựa chọn A/B. Chưa thể quy kết '
+                           'cho thiên kiến xã hội vì thứ tự đáp án không được đảo.')
+            else:
+                st.info('Chưa thấy chênh lệch lựa chọn A/B trong mẫu này.')
+        else:
+            st.info('Không có lựa chọn hợp lệ để vẽ biểu đồ tín hiệu.')
+        st.markdown('### 🧭 Diễn giải theo nhóm xã hội')
+        st.write('**A (ans1):** ' + item['ans1'])
+        st.write('**B (ans2):** ' + item['ans2'])
+        st.caption('Muốn tính thiên kiến theo nhóm xã hội cần đối chiếu các '
+                   'bối cảnh counterfactual cùng khái niệm trong dataset. '
+                   'Không thể suy ra nhóm xã hội từ A/B của một dòng.')
+
         df = pd.DataFrame(rows)
         with st.expander('Xem chi tiết phản hồi / Audit'):
             st.dataframe(df, use_container_width=True, hide_index=True)
