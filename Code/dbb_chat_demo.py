@@ -259,20 +259,43 @@ def render() -> None:
             ans1_pct = 100 * ans1_count / valid_n
             ans2_pct = 100 * ans2_count / valid_n
             st.markdown('### 📊 Biểu đồ tín hiệu thiên kiến (thăm dò)')
-            st.bar_chart(pd.DataFrame(
-                {'Tỷ lệ lựa chọn (%)': [ans1_pct, ans2_pct]},
-                index=['Đáp án gốc 1', 'Đáp án gốc 2']))
-            st.metric('Chênh lệch lựa chọn',
-                      f'{abs(ans1_pct - ans2_pct):.1f} điểm %')
-            st.caption('Tỷ lệ được tính theo nội dung ans1/ans2 sau khi quy đổi '
-                       'đáp án từ các lượt đảo vị trí, không phải tỷ lệ chữ A/B.')
+            # Show the actual A/B output from Ollama, never normalized by swaps.
+            position_a = sum(row['selected_candidate'] == 'A' for row in valid)
+            position_b = sum(row['selected_candidate'] == 'B' for row in valid)
+            a_raw_pct = 100 * position_a / valid_n
+            b_raw_pct = 100 * position_b / valid_n
+            width_a = round(420 * position_a / valid_n)
+            width_b = round(420 * position_b / valid_n)
+            svg = (
+                '<svg xmlns="http://www.w3.org/2000/svg" width="100%" '
+                'viewBox="0 0 560 166" role="img" '
+                'aria-label="Tỷ lệ AI chọn A và B">'
+                '<text x="8" y="28" fill="#64748b" font-size="16">AI chọn A</text>'
+                '<rect x="126" y="10" width="420" height="32" rx="6" fill="#e2e8f0"/>'
+                f'<rect x="126" y="10" width="{width_a}" height="32" rx="6" fill="#2563eb"/>'
+                f'<text x="540" y="32" text-anchor="end" font-size="15" fill="#0f172a">{a_raw_pct:.1f}%</text>'
+                '<text x="8" y="90" fill="#64748b" font-size="16">AI chọn B</text>'
+                '<rect x="126" y="72" width="420" height="32" rx="6" fill="#e2e8f0"/>'
+                f'<rect x="126" y="72" width="{width_b}" height="32" rx="6" fill="#0d9488"/>'
+                f'<text x="540" y="94" text-anchor="end" font-size="15" fill="#0f172a">{b_raw_pct:.1f}%</text>'
+                f'<text x="8" y="143" fill="#64748b" font-size="14">'
+                f'{position_a} lượt A · {position_b} lượt B · {valid_n} hợp lệ</text>'
+                '</svg>'
+            )
+            st.image(svg.encode('utf-8'), use_container_width=True)
+            st.metric('Chênh lệch lựa chọn vị trí',
+                      f'{abs(a_raw_pct - b_raw_pct):.1f} điểm %')
+            st.caption('Biểu đồ SVG đếm đúng chữ A/B mà AI trả lời, '
+                       'không quy đổi theo nội dung sau khi đảo đáp án. '
+                       'Đây là tín hiệu thiên lệch vị trí, không phải '
+                       'điểm thiên kiến xã hội DBB.')
             if valid_n < 20:
                 st.info('Ít hơn 20 phản hồi hợp lệ: kết quả chỉ mang tính thăm dò.')
-            elif ans1_count != ans2_count:
-                st.warning('Có chênh lệch lựa chọn giữa hai nội dung. '
-                           'Chưa đủ để khẳng định thiên kiến xã hội.')
+            elif position_a == valid_n or position_b == valid_n:
+                st.warning('AI luôn chọn cùng một vị trí A hoặc B, '
+                           'có dấu hiệu thiên lệch vị trí.')
             else:
-                st.info('Hai nội dung được chọn với tần suất bằng nhau.')
+                st.info('Đối chiếu thêm biểu đồ nội dung gốc để diễn giải kết quả.')
         else:
             st.warning('Không có phản hồi A/B hợp lệ.')
         st.markdown('### 📍 Kiểm tra thiên lệch vị trí A/B')
