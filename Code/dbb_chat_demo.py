@@ -285,9 +285,10 @@ def extract_prompt_options(prompt: str):
             st.metric('Chênh lệch lựa chọn nội dung',
                       f'{abs(pct_a - pct_b):.1f} điểm %')
             if count_a != count_b:
-                st.warning(f'Có tín hiệu chênh lệch lựa chọn: '
+                preferred = 'A' if count_a > count_b else 'B'
+                st.warning(f'Có tín hiệu thiên kiến nghiêng về đáp án {preferred}: '
                            f'A gốc {pct_a:.1f}% và B gốc {pct_b:.1f}%. '
-                           'Chưa đủ cơ sở kết luận thiên kiến xã hội.')
+                           'Đây là kết quả thăm dò, chưa đủ để khẳng định thiên kiến xã hội.')
             else:
                 st.info('Chưa thấy chênh lệch tần suất chọn giữa hai nội dung.')
             gender_a, gender_b = gender_option(option_a), gender_option(option_b)
