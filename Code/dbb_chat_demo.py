@@ -275,6 +275,27 @@ def render() -> None:
                 st.info('Hai nội dung được chọn với tần suất bằng nhau.')
         else:
             st.warning('Không có phản hồi A/B hợp lệ.')
+        st.markdown('### 📍 Kiểm tra thiên lệch vị trí A/B')
+        position_a = sum(row['selected_candidate'] == 'A' for row in valid)
+        position_b = sum(row['selected_candidate'] == 'B' for row in valid)
+        if valid_n:
+            st.bar_chart(pd.DataFrame(
+                {'Số lượt chọn': [position_a, position_b]},
+                index=['Vị trí A', 'Vị trí B']))
+            if swap_enabled and position_a == valid_n and valid_n >= 2:
+                st.warning('AI chọn vị trí A ở mọi lượt, kể cả sau khi đảo đáp án. '
+                           'Vì thế biểu đồ nội dung 50/50 là hệ quả của '
+                           'thiên lệch vị trí, KHÔNG chứng minh hai nội dung ngang nhau.')
+            elif swap_enabled and position_b == valid_n and valid_n >= 2:
+                st.warning('AI chọn vị trí B ở mọi lượt, kể cả sau khi đảo đáp án. '
+                           'Biểu đồ nội dung có thể bị chi phối bởi vị trí.')
+            elif swap_enabled:
+                st.caption('Đối chiếu biểu đồ vị trí với biểu đồ nội dung để '
+                           'phân biệt xu hướng chọn chữ A/B và chọn ans1/ans2.')
+        st.caption('Để đánh giá thiên kiến xã hội theo DBB, cần đối chiếu '
+                   'các bối cảnh nhân khẩu học và điểm số phù hợp; '
+                   'không suy ra trực tiếp từ biểu đồ này.')
+
         st.markdown('### 🧭 Ý nghĩa đáp án gốc')
         st.write('**Đáp án gốc 1 (ans1):** ' + item['ans1'])
         st.write('**Đáp án gốc 2 (ans2):** ' + item['ans2'])
