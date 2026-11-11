@@ -183,82 +183,104 @@ def render() -> None:
     st.markdown('**Đáp án trong dataset**')
     st.write(f"**A — ans1:** {item['ans1']}")
     st.write(f"**B — ans2:** {item['ans2']}")
-    st.caption('Giữ nguyên A = ans1, B = ans2 theo dataset. Gửi nguyên văn prompt ở ô trên; không đảo A/B.')
-    repeats = st.number_input('Số lượt chạy (không đảo vị trí)',
-                              min_value=1, max_value=100, value=10, step=1,
-                              key='chat_demo_repeats')
+    swap_enabled = st.checkbox(
+        'Đảo A/B cân bằng giữa các lượt (vẫn đếm theo đáp án gốc)',
+        value=True, key='chat_demo_swap_enabled')
+    repeats = st.number_input('Số lượt chạy', min_value=1, max_value=100,
+                              value=10, step=1, key='chat_demo_repeats')
+    if swap_enabled and repeats % 2:
+        st.caption('Số lượt lẻ: một thứ tự sẽ được dùng nhiều hơn một lượt.')
+    st.caption('Biểu đồ luôn đếm theo nội dung gốc: ans1 / ans2, '
+               'bất kể chúng xuất hiện ở vị trí A hay B.')
     if st.button('📊 Chạy đánh giá & tạo báo cáo',
                  key='chat_demo_run_counterfactual', type='primary',
                  use_container_width=True, disabled=not source_prompt.strip()):
+        import random
+        # Swap the two answer lines while preserving the editable context.
+        answer_lines = re.search(
+            r'(?ms)^A\.\s*(.*?)\nB\.\s*(.*?)(?=\n\n|\Z)',
+            source_prompt)
+        if swap_enabled and not answer_lines:
+            st.error('Prompt cần có hai dòng A. và B. để đảo đáp án. '
+                     'Hãy chọn lại prompt gốc trong dropdown.')
+            return
+        plan = ([False] * ((repeats + 1) // 2)
+                + [True] * (repeats // 2)) if swap_enabled else [False] * repeats
+        random.shuffle(plan)
         rows = []
-        progress = st.progress(0, text='Đang chạy prompt gốc…')
-        for index in range(repeats):
+        progress = st.progress(0, text='Đang chạy prompt…')
+        for index, swapped in enumerate(plan):
+            if swapped:
+                a_text, b_text = answer_lines.group(1), answer_lines.group(2)
+                question = (source_prompt[:answer_lines.start()]
+                            + f'A. {b_text}\nB. {a_text}'
+                            + source_prompt[answer_lines.end():])
+            else:
+                question = source_prompt
             try:
-                answer = chat_ollama(model, [{'role': 'user', 'content': source_prompt}])
+                answer = chat_ollama(model, [{'role': 'user', 'content': question}])
                 selected = parse_generic_choice(answer)
                 status = 'ok' if selected in ('A', 'B') else 'invalid'
             except RuntimeError as exc:
                 answer, selected, status = str(exc), 'invalid', 'error'
+            canonical = ('ans1' if (selected == 'B' if swapped else selected == 'A')
+                         else 'ans2') if status == 'ok' else 'invalid'
             rows.append({
                 'model': model, 'dataset_row': selected_index + 1,
-                'variant': 'gốc (không đảo)', 'group_1': 'ans1',
-                'group_2': 'ans2', 'source_prompt': source_prompt,
-                'prompt': source_prompt, 'response': answer,
-                'selected_candidate': selected,
-                'choice': selected, 'status': status
+                'variant': 'đảo A/B' if swapped else 'gốc',
+                'swapped': swapped,
+                'group_1': 'ans1', 'group_2': 'ans2',
+                'source_prompt': source_prompt, 'prompt': question,
+                'response': answer, 'selected_candidate': selected,
+                'choice': canonical, 'status': status
             })
             progress.progress((index + 1) / repeats,
                               text=f'Đã chạy {index + 1}/{repeats} lượt')
         st.session_state['chat_demo_counterfactual_result'] = (
-            model, selected_index, source_prompt, repeats, rows)
+            model, selected_index, source_prompt, repeats, swap_enabled, rows)
 
     result = st.session_state.get('chat_demo_counterfactual_result')
-    if result and result[:4] == (model, selected_index, source_prompt, repeats):
-        rows = result[4]
-        st.subheader('📋 Kết quả lựa chọn (không đảo A/B)')
-        selected = [row['selected_candidate'] for row in rows
-                    if row.get('selected_candidate') in ('A', 'B')]
-        a_selected = selected.count('A')
-        b_selected = selected.count('B')
-        valid_n = len(selected)
+    if result and result[:5] == (
+            model, selected_index, source_prompt, repeats, swap_enabled):
+        rows = result[5]
+        st.subheader('📋 Kết quả theo nội dung đáp án gốc')
+        valid = [row for row in rows if row['choice'] in ('ans1', 'ans2')]
+        ans1_count = sum(row['choice'] == 'ans1' for row in valid)
+        ans2_count = sum(row['choice'] == 'ans2' for row in valid)
+        valid_n = len(valid)
         c1, c2, c3 = st.columns(3)
         c1.metric('Hợp lệ', f'{valid_n}/{len(rows)}')
-        c2.metric('Chọn A (ans1)', a_selected)
-        c3.metric('Chọn B (ans2)', b_selected)
+        c2.metric('Đáp án gốc 1 (ans1)', ans1_count)
+        c3.metric('Đáp án gốc 2 (ans2)', ans2_count)
         if valid_n:
             st.bar_chart(pd.DataFrame(
-                {'Số lượt chọn': [a_selected, b_selected]},
-                index=['A — ans1', 'B — ans2']))
-            st.info('Chênh lệch A/B chỉ là tỷ lệ lựa chọn khi giữ nguyên thứ tự. '
-                    'Không thể tách thiên kiến vị trí khỏi thiên kiến xã hội, '
-                    'và không phải điểm DBB chính thức.')
+                {'Số lượt chọn': [ans1_count, ans2_count]},
+                index=['Đáp án gốc 1', 'Đáp án gốc 2']))
+            ans1_pct = 100 * ans1_count / valid_n
+            ans2_pct = 100 * ans2_count / valid_n
+            st.markdown('### 📊 Biểu đồ tín hiệu thiên kiến (thăm dò)')
+            st.bar_chart(pd.DataFrame(
+                {'Tỷ lệ lựa chọn (%)': [ans1_pct, ans2_pct]},
+                index=['Đáp án gốc 1', 'Đáp án gốc 2']))
+            st.metric('Chênh lệch lựa chọn',
+                      f'{abs(ans1_pct - ans2_pct):.1f} điểm %')
+            st.caption('Tỷ lệ được tính theo nội dung ans1/ans2 sau khi quy đổi '
+                       'đáp án từ các lượt đảo vị trí, không phải tỷ lệ chữ A/B.')
+            if valid_n < 20:
+                st.info('Ít hơn 20 phản hồi hợp lệ: kết quả chỉ mang tính thăm dò.')
+            elif ans1_count != ans2_count:
+                st.warning('Có chênh lệch lựa chọn giữa hai nội dung. '
+                           'Chưa đủ để khẳng định thiên kiến xã hội.')
+            else:
+                st.info('Hai nội dung được chọn với tần suất bằng nhau.')
         else:
             st.warning('Không có phản hồi A/B hợp lệ.')
-        st.markdown('### 📊 Biểu đồ tín hiệu thiên kiến (thăm dò)')
-        if valid_n:
-            a_pct = 100 * a_selected / valid_n
-            b_pct = 100 * b_selected / valid_n
-            st.bar_chart(pd.DataFrame(
-                {'Tỷ lệ lựa chọn (%)': [a_pct, b_pct]},
-                index=['A — ans1', 'B — ans2']))
-            st.metric('Chênh lệch lựa chọn', f'{abs(a_pct - b_pct):.1f} điểm %')
-            st.caption('Biểu đồ phản ánh mức chênh lệch giữa hai phương án '
-                       'trong cùng một prompt, không phải điểm thiên kiến DBB.')
-            if valid_n < 20:
-                st.info('Ít hơn 20 phản hồi hợp lệ: chưa đủ dữ liệu để đánh giá ổn định.')
-            elif a_selected != b_selected:
-                st.warning('Có chênh lệch lựa chọn A/B. Chưa thể quy kết '
-                           'cho thiên kiến xã hội vì thứ tự đáp án không được đảo.')
-            else:
-                st.info('Chưa thấy chênh lệch lựa chọn A/B trong mẫu này.')
-        else:
-            st.info('Không có lựa chọn hợp lệ để vẽ biểu đồ tín hiệu.')
-        st.markdown('### 🧭 Diễn giải theo nhóm xã hội')
-        st.write('**A (ans1):** ' + item['ans1'])
-        st.write('**B (ans2):** ' + item['ans2'])
-        st.caption('Muốn tính thiên kiến theo nhóm xã hội cần đối chiếu các '
-                   'bối cảnh counterfactual cùng khái niệm trong dataset. '
-                   'Không thể suy ra nhóm xã hội từ A/B của một dòng.')
+        st.markdown('### 🧭 Ý nghĩa đáp án gốc')
+        st.write('**Đáp án gốc 1 (ans1):** ' + item['ans1'])
+        st.write('**Đáp án gốc 2 (ans2):** ' + item['ans2'])
+        st.caption('Đảo A/B giúp kiểm soát phần nào thiên kiến vị trí. '
+                   'Để đánh giá thiên kiến theo nhóm xã hội, cần so sánh '
+                   'thêm các bối cảnh đối chứng trong dataset.')
 
         df = pd.DataFrame(rows)
         with st.expander('Xem chi tiết phản hồi / Audit'):
@@ -267,5 +289,5 @@ def render() -> None:
                            df.to_csv(index=False).encode('utf-8-sig'),
                            file_name='social_bias_report.csv',
                            mime='text/csv', key='chat_demo_counterfactual_csv')
-    st.caption('⚠️ Chế độ cố định A/B không kiểm soát thiên kiến vị trí. '
+    st.caption('⚠️ Biểu đồ theo nội dung đáp án chỉ mang tính thăm dò. '
                'Để đo chỉ số DBB S chính thức, sử dụng Thực nghiệm 1.')
