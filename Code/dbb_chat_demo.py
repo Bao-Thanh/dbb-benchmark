@@ -143,8 +143,23 @@ def dataset_question(context: str, answer_a: str, answer_b: str) -> str:
 
 
 def extract_prompt_options(prompt: str):
-    """Find editable A./B. lines without swallowing subsequent instructions."""
-    match = re.search(r'(?m)^A\.[ \t]*(.+)\r?\nB\.[ \t]*(.+)[ \t]*
+    """Read the two editable answer lines without consuming following instructions."""
+    match = re.search(r'(?m)^A\\.[ \\t]*(.+)\\r?\\nB\\.[ \\t]*(.+)[ \\t]*$', prompt)
+    if not match:
+        return None
+    return match, match.group(1).strip(), match.group(2).strip()
+
+
+def gender_option(text: str) -> str | None:
+    """Recognize explicitly named gender only."""
+    if re.search(r'(?i)(?<!\\w)(?:nữ|female|woman|women)(?!\\w)', text):
+        return 'Nữ'
+    if re.search(r'(?i)(?<!\\w)(?:nam|male|man|men)(?!\\w)', text):
+        return 'Nam'
+    return None
+
+
+def render() -> None:
     st.title('📊 AI Bias Lab')
     st.caption('Một biểu mẫu: chọn loại thiên kiến, chọn prompt mẫu hoặc nhập nội dung, '
                'chọn số lượt chạy và nhận báo cáo đối chứng.')
@@ -325,170 +340,4 @@ def extract_prompt_options(prompt: str):
                            file_name='social_bias_report.csv',
                            mime='text/csv', key='chat_demo_counterfactual_csv')
     st.caption('⚠️ Biểu đồ theo nội dung ứng viên chỉ mang tính thăm dò. '
-               'Để đo chỉ số DBB S chính thức, sử dụng Thực nghiệm 1.')
-, prompt)
-    if not match:
-        return None
-    return match, match.group(1).strip(), match.group(2).strip()
-
-
-def gender_option(text: str) -> str | None:
-    """Only classify explicitly gender-labelled candidates."""
-    if re.search(r'(?i)(?<!\w)(?:nữ|female|woman|women)(?!\w)', text):
-        return 'Nữ'
-    if re.search(r'(?i)(?<!\w)(?:nam|male|man|men)(?!\w)', text):
-        return 'Nam'
-    return None
-
-
-def render() -> None:
-    st.title('📊 AI Bias Lab')
-    st.caption('Một biểu mẫu: chọn loại thiên kiến, chọn prompt mẫu hoặc nhập nội dung, '
-               'chọn số lượt chạy và nhận báo cáo đối chứng.')
-    available = models_available()
-    if not available:
-        st.error('Không kết nối được Ollama. Kiểm tra `ollama list`.')
-        return
-
-    model = st.selectbox('🤖 Model Ollama', available, key='chat_demo_model')
-    scenario = st.selectbox('Loại thiên kiến cần kiểm tra', list(SCENARIOS),
-                            key='chat_demo_cf_scenario')
-    dataset_path = DATASET / 'Bias-Dataset.csv'
-    if not dataset_path.is_file():
-        st.error('Thiếu Dataset/Bias-Dataset.csv trên máy. Hãy đặt dataset vào thư mục Dataset/.')
-        return
-    try:
-        records, labels = dataset_prompt_options(dataset_path.stat().st_mtime_ns)
-    except (OSError, ValueError, KeyError) as exc:
-        st.error(f'Không đọc được dataset: {exc}')
-        return
-    if not records:
-        st.error('Dataset không có bối cảnh nào.')
-        return
-    selected_index = st.selectbox(
-        f'Chọn 1 prompt trong dataset ({len(records):,} dòng)',
-        range(len(records)), format_func=lambda i: labels[i],
-        key='chat_demo_dataset_index')
-    item = records[selected_index]
-    full_prompt = dataset_question(item['Context'], item['ans1'], item['ans2'])
-    edit_key = 'chat_demo_dataset_prompt_editor'
-    selection_key = (selected_index, dataset_path.stat().st_mtime_ns)
-    if st.session_state.get('chat_demo_dataset_last_selection') != selection_key:
-        st.session_state[edit_key] = full_prompt
-        st.session_state['chat_demo_dataset_last_selection'] = selection_key
-    source_prompt = st.text_area(
-        '✍️ Prompt hoàn chỉnh (tiếng Anh gốc, có thể chỉnh sửa)',
-        key=edit_key, height=260)
-    st.markdown('**Đáp án trong dataset**')
-    st.write(f"**A — ans1:** {item['ans1']}")
-    st.write(f"**B — ans2:** {item['ans2']}")
-    swap_enabled = st.checkbox(
-        'Đảo A/B cân bằng giữa các lượt (vẫn đếm theo đáp án gốc)',
-        value=True, key='chat_demo_swap_enabled')
-    repeats = st.number_input('Số lượt chạy', min_value=1, max_value=100,
-                              value=10, step=1, key='chat_demo_repeats')
-    if swap_enabled and repeats % 2:
-        st.caption('Số lượt lẻ: một thứ tự sẽ được dùng nhiều hơn một lượt.')
-    st.caption('Biểu đồ luôn đếm theo nội dung gốc: ans1 / ans2, '
-               'bất kể chúng xuất hiện ở vị trí A hay B.')
-    if st.button('📊 Chạy đánh giá & tạo báo cáo',
-                 key='chat_demo_run_counterfactual', type='primary',
-                 use_container_width=True, disabled=not source_prompt.strip()):
-        import random
-        # Swap the two answer lines while preserving the editable context.
-        answer_lines = re.search(
-            r'(?ms)^A\.\s*(.*?)\nB\.\s*(.*?)(?=\n\n|\Z)',
-            source_prompt)
-        if swap_enabled and not answer_lines:
-            st.error('Prompt cần có hai dòng A. và B. để đảo đáp án. '
-                     'Hãy chọn lại prompt gốc trong dropdown.')
-            return
-        plan = ([False] * ((repeats + 1) // 2)
-                + [True] * (repeats // 2)) if swap_enabled else [False] * repeats
-        random.shuffle(plan)
-        rows = []
-        progress = st.progress(0, text='Đang chạy prompt…')
-        for index, swapped in enumerate(plan):
-            if swapped:
-                a_text, b_text = answer_lines.group(1), answer_lines.group(2)
-                question = (source_prompt[:answer_lines.start()]
-                            + f'A. {b_text}\nB. {a_text}'
-                            + source_prompt[answer_lines.end():])
-            else:
-                question = source_prompt
-            try:
-                answer = chat_ollama(model, [{'role': 'user', 'content': question}])
-                selected = parse_generic_choice(answer)
-                status = 'ok' if selected in ('A', 'B') else 'invalid'
-            except RuntimeError as exc:
-                answer, selected, status = str(exc), 'invalid', 'error'
-            canonical = ('ans1' if (selected == 'B' if swapped else selected == 'A')
-                         else 'ans2') if status == 'ok' else 'invalid'
-            rows.append({
-                'model': model, 'dataset_row': selected_index + 1,
-                'variant': 'đảo A/B' if swapped else 'gốc',
-                'swapped': swapped,
-                'group_1': 'ans1', 'group_2': 'ans2',
-                'source_prompt': source_prompt, 'prompt': question,
-                'response': answer, 'selected_candidate': selected,
-                'choice': canonical, 'status': status
-            })
-            progress.progress((index + 1) / repeats,
-                              text=f'Đã chạy {index + 1}/{repeats} lượt')
-        st.session_state['chat_demo_counterfactual_result'] = (
-            model, selected_index, source_prompt, repeats, swap_enabled, rows)
-
-    result = st.session_state.get('chat_demo_counterfactual_result')
-    if result and result[:5] == (
-            model, selected_index, source_prompt, repeats, swap_enabled):
-        rows = result[5]
-        st.markdown('### 📊 Biểu đồ tín hiệu thiên kiến (thăm dò)')
-        valid = [row for row in rows
-                 if row.get('selected_candidate') in ('A', 'B')]
-        valid_n = len(valid)
-        position_a = sum(row['selected_candidate'] == 'A' for row in valid)
-        position_b = sum(row['selected_candidate'] == 'B' for row in valid)
-        if valid_n:
-            a_pct = 100 * position_a / valid_n
-            b_pct = 100 * position_b / valid_n
-            width_a = round(420 * a_pct / 100)
-            width_b = round(420 * b_pct / 100)
-            svg = (
-                '<svg xmlns="http://www.w3.org/2000/svg" width="100%" '
-                'viewBox="0 0 560 166" role="img" '
-                'aria-label="Tỷ lệ AI chọn A và B">'
-                '<text x="8" y="28" fill="#64748b" font-size="16">AI chọn A</text>'
-                '<rect x="126" y="10" width="420" height="32" rx="6" fill="#e2e8f0"/>'
-                f'<rect x="126" y="10" width="{width_a}" height="32" rx="6" fill="#2563eb"/>'
-                f'<text x="540" y="32" text-anchor="end" font-size="15" fill="#0f172a">{a_pct:.1f}%</text>'
-                '<text x="8" y="90" fill="#64748b" font-size="16">AI chọn B</text>'
-                '<rect x="126" y="72" width="420" height="32" rx="6" fill="#e2e8f0"/>'
-                f'<rect x="126" y="72" width="{width_b}" height="32" rx="6" fill="#0d9488"/>'
-                f'<text x="540" y="94" text-anchor="end" font-size="15" fill="#0f172a">{b_pct:.1f}%</text>'
-                f'<text x="8" y="143" fill="#64748b" font-size="14">'
-                f'{position_a} lượt A · {position_b} lượt B · {valid_n} hợp lệ</text>'
-                '</svg>'
-            )
-            # SVG markup is not a raster image; do not pass its bytes to st.image/Pillow.
-            st.components.v1.html(svg, height=175, scrolling=False)
-            st.metric('Chênh lệch chọn A/B', f'{abs(a_pct - b_pct):.1f} điểm %')
-            if valid_n < 20:
-                st.info('Ít hơn 20 phản hồi hợp lệ: kết quả chỉ mang tính thăm dò.')
-            if swap_enabled and (position_a == valid_n or position_b == valid_n):
-                st.warning('AI chọn cùng một vị trí ở mọi lượt dù có đảo nội dung: '
-                           'dấu hiệu thiên lệch vị trí, không phải thiên kiến xã hội.')
-        else:
-            st.warning('Không có phản hồi A/B hợp lệ để vẽ biểu đồ.')
-        st.caption('Biểu đồ đếm trực tiếp chữ A/B mà AI trả lời, '
-                   'không quy đổi theo ans1/ans2. Đây là tín hiệu thiên lệch '
-                   'vị trí đáp án, không phải điểm DBB chính thức.')
-
-        df = pd.DataFrame(rows)
-        with st.expander('Xem chi tiết phản hồi / Audit'):
-            st.dataframe(df, use_container_width=True, hide_index=True)
-        st.download_button('⬇ Tải báo cáo CSV',
-                           df.to_csv(index=False).encode('utf-8-sig'),
-                           file_name='social_bias_report.csv',
-                           mime='text/csv', key='chat_demo_counterfactual_csv')
-    st.caption('⚠️ Biểu đồ lựa chọn A/B chỉ mang tính thăm dò. '
                'Để đo chỉ số DBB S chính thức, sử dụng Thực nghiệm 1.')
