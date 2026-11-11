@@ -243,29 +243,17 @@ def render() -> None:
     if result and result[:5] == (
             model, selected_index, source_prompt, repeats, swap_enabled):
         rows = result[5]
-        st.subheader('📋 Kết quả theo nội dung đáp án gốc')
-        valid = [row for row in rows if row['choice'] in ('ans1', 'ans2')]
-        ans1_count = sum(row['choice'] == 'ans1' for row in valid)
-        ans2_count = sum(row['choice'] == 'ans2' for row in valid)
+        st.markdown('### 📊 Biểu đồ tín hiệu thiên kiến (thăm dò)')
+        valid = [row for row in rows
+                 if row.get('selected_candidate') in ('A', 'B')]
         valid_n = len(valid)
-        c1, c2, c3 = st.columns(3)
-        c1.metric('Hợp lệ', f'{valid_n}/{len(rows)}')
-        c2.metric('Đáp án gốc 1 (ans1)', ans1_count)
-        c3.metric('Đáp án gốc 2 (ans2)', ans2_count)
+        position_a = sum(row['selected_candidate'] == 'A' for row in valid)
+        position_b = sum(row['selected_candidate'] == 'B' for row in valid)
         if valid_n:
-            st.bar_chart(pd.DataFrame(
-                {'Số lượt chọn': [ans1_count, ans2_count]},
-                index=['Đáp án gốc 1', 'Đáp án gốc 2']))
-            ans1_pct = 100 * ans1_count / valid_n
-            ans2_pct = 100 * ans2_count / valid_n
-            st.markdown('### 📊 Biểu đồ tín hiệu thiên kiến (thăm dò)')
-            # Show the actual A/B output from Ollama, never normalized by swaps.
-            position_a = sum(row['selected_candidate'] == 'A' for row in valid)
-            position_b = sum(row['selected_candidate'] == 'B' for row in valid)
-            a_raw_pct = 100 * position_a / valid_n
-            b_raw_pct = 100 * position_b / valid_n
-            width_a = round(420 * position_a / valid_n)
-            width_b = round(420 * position_b / valid_n)
+            a_pct = 100 * position_a / valid_n
+            b_pct = 100 * position_b / valid_n
+            width_a = round(420 * a_pct / 100)
+            width_b = round(420 * b_pct / 100)
             svg = (
                 '<svg xmlns="http://www.w3.org/2000/svg" width="100%" '
                 'viewBox="0 0 560 166" role="img" '
@@ -273,58 +261,28 @@ def render() -> None:
                 '<text x="8" y="28" fill="#64748b" font-size="16">AI chọn A</text>'
                 '<rect x="126" y="10" width="420" height="32" rx="6" fill="#e2e8f0"/>'
                 f'<rect x="126" y="10" width="{width_a}" height="32" rx="6" fill="#2563eb"/>'
-                f'<text x="540" y="32" text-anchor="end" font-size="15" fill="#0f172a">{a_raw_pct:.1f}%</text>'
+                f'<text x="540" y="32" text-anchor="end" font-size="15" fill="#0f172a">{a_pct:.1f}%</text>'
                 '<text x="8" y="90" fill="#64748b" font-size="16">AI chọn B</text>'
                 '<rect x="126" y="72" width="420" height="32" rx="6" fill="#e2e8f0"/>'
                 f'<rect x="126" y="72" width="{width_b}" height="32" rx="6" fill="#0d9488"/>'
-                f'<text x="540" y="94" text-anchor="end" font-size="15" fill="#0f172a">{b_raw_pct:.1f}%</text>'
+                f'<text x="540" y="94" text-anchor="end" font-size="15" fill="#0f172a">{b_pct:.1f}%</text>'
                 f'<text x="8" y="143" fill="#64748b" font-size="14">'
                 f'{position_a} lượt A · {position_b} lượt B · {valid_n} hợp lệ</text>'
                 '</svg>'
             )
-            st.image(svg.encode('utf-8'), use_container_width=True)
-            st.metric('Chênh lệch lựa chọn vị trí',
-                      f'{abs(a_raw_pct - b_raw_pct):.1f} điểm %')
-            st.caption('Biểu đồ SVG đếm đúng chữ A/B mà AI trả lời, '
-                       'không quy đổi theo nội dung sau khi đảo đáp án. '
-                       'Đây là tín hiệu thiên lệch vị trí, không phải '
-                       'điểm thiên kiến xã hội DBB.')
+            # SVG markup is not a raster image; do not pass its bytes to st.image/Pillow.
+            st.components.v1.html(svg, height=175, scrolling=False)
+            st.metric('Chênh lệch chọn A/B', f'{abs(a_pct - b_pct):.1f} điểm %')
             if valid_n < 20:
                 st.info('Ít hơn 20 phản hồi hợp lệ: kết quả chỉ mang tính thăm dò.')
-            elif position_a == valid_n or position_b == valid_n:
-                st.warning('AI luôn chọn cùng một vị trí A hoặc B, '
-                           'có dấu hiệu thiên lệch vị trí.')
-            else:
-                st.info('Đối chiếu thêm biểu đồ nội dung gốc để diễn giải kết quả.')
+            if swap_enabled and (position_a == valid_n or position_b == valid_n):
+                st.warning('AI chọn cùng một vị trí ở mọi lượt dù có đảo nội dung: '
+                           'dấu hiệu thiên lệch vị trí, không phải thiên kiến xã hội.')
         else:
-            st.warning('Không có phản hồi A/B hợp lệ.')
-        st.markdown('### 📍 Kiểm tra thiên lệch vị trí A/B')
-        position_a = sum(row['selected_candidate'] == 'A' for row in valid)
-        position_b = sum(row['selected_candidate'] == 'B' for row in valid)
-        if valid_n:
-            st.bar_chart(pd.DataFrame(
-                {'Số lượt chọn': [position_a, position_b]},
-                index=['Vị trí A', 'Vị trí B']))
-            if swap_enabled and position_a == valid_n and valid_n >= 2:
-                st.warning('AI chọn vị trí A ở mọi lượt, kể cả sau khi đảo đáp án. '
-                           'Vì thế biểu đồ nội dung 50/50 là hệ quả của '
-                           'thiên lệch vị trí, KHÔNG chứng minh hai nội dung ngang nhau.')
-            elif swap_enabled and position_b == valid_n and valid_n >= 2:
-                st.warning('AI chọn vị trí B ở mọi lượt, kể cả sau khi đảo đáp án. '
-                           'Biểu đồ nội dung có thể bị chi phối bởi vị trí.')
-            elif swap_enabled:
-                st.caption('Đối chiếu biểu đồ vị trí với biểu đồ nội dung để '
-                           'phân biệt xu hướng chọn chữ A/B và chọn ans1/ans2.')
-        st.caption('Để đánh giá thiên kiến xã hội theo DBB, cần đối chiếu '
-                   'các bối cảnh nhân khẩu học và điểm số phù hợp; '
-                   'không suy ra trực tiếp từ biểu đồ này.')
-
-        st.markdown('### 🧭 Ý nghĩa đáp án gốc')
-        st.write('**Đáp án gốc 1 (ans1):** ' + item['ans1'])
-        st.write('**Đáp án gốc 2 (ans2):** ' + item['ans2'])
-        st.caption('Đảo A/B giúp kiểm soát phần nào thiên kiến vị trí. '
-                   'Để đánh giá thiên kiến theo nhóm xã hội, cần so sánh '
-                   'thêm các bối cảnh đối chứng trong dataset.')
+            st.warning('Không có phản hồi A/B hợp lệ để vẽ biểu đồ.')
+        st.caption('Biểu đồ đếm trực tiếp chữ A/B mà AI trả lời, '
+                   'không quy đổi theo ans1/ans2. Đây là tín hiệu thiên lệch '
+                   'vị trí đáp án, không phải điểm DBB chính thức.')
 
         df = pd.DataFrame(rows)
         with st.expander('Xem chi tiết phản hồi / Audit'):
@@ -333,5 +291,5 @@ def render() -> None:
                            df.to_csv(index=False).encode('utf-8-sig'),
                            file_name='social_bias_report.csv',
                            mime='text/csv', key='chat_demo_counterfactual_csv')
-    st.caption('⚠️ Biểu đồ theo nội dung đáp án chỉ mang tính thăm dò. '
+    st.caption('⚠️ Biểu đồ lựa chọn A/B chỉ mang tính thăm dò. '
                'Để đo chỉ số DBB S chính thức, sử dụng Thực nghiệm 1.')
