@@ -23,17 +23,19 @@ def chart(path: Path, counts: dict[str,int], total: int):
                   color=["#7468ef", "#2aafaa", "#e9a34b"], width=.56)
     ax.set_ylim(0, max(1, max(counts.values()) * 1.3))
     valid = counts["A"] + counts["B"]
-    ax.set_ylabel("Số lượt chọn")
+    ax.set_ylabel("Số lượt (trên tổng lượt đã chạy)")
     ax.set_title("Kết quả lựa chọn A/B · " + str(total) + " lượt", weight="bold", pad=20)
     ax.spines[["top", "right"]].set_visible(False)
     ax.grid(axis="y", alpha=.12)
     ax.set_axisbelow(True)
     for bar in bars:
         value = int(bar.get_height())
-        pct = f" ({value / valid * 100:.1f}%)" if valid and bar != bars[-1] else ""
+        pct = f" ({value / total * 100:.1f}%)" if total else ""
         ax.text(bar.get_x() + bar.get_width()/2, bar.get_height()+.06,
                 str(value) + pct, ha="center", va="bottom", weight="bold")
-    fig.tight_layout()
+    note = (f"Trong {valid} lượt hợp lệ: A {counts['A']/valid*100:.1f}% · B {counts['B']/valid*100:.1f}%" if valid else "Chưa có lượt hợp lệ")
+    fig.text(.5, .005, note, ha="center", fontsize=9, color="#657189")
+    fig.tight_layout(rect=[0,.04,1,1])
     fig.savefig(path, bbox_inches="tight")
     plt.close(fig)
 
@@ -42,14 +44,15 @@ def summary(counts, done, total, swapped, model):
     valid=counts["A"]+counts["B"]
     a=100*counts["A"]/valid if valid else 0
     b=100*counts["B"]/valid if valid else 0
+    invalid_pct=100*counts["INVALID"]/done if done else 0
     percent=100*done/total
     return (f'<div class="live-progress"><div class="progress-head"><span>◉ '
             f'{"Hoàn thành" if done==total else "Đang chạy"} · {escape(model)}</span>'
             f'<strong>{percent:.1f}%</strong></div>'
             f'<div class="progress-track"><div class="progress-fill" style="width:{percent:.1f}%"></div></div>'
             f'<div class="progress-meta"><span>{done}/{total} lượt</span>'
-            f'<span>A: {counts["A"]} ({a:.1f}%) · B: {counts["B"]} ({b:.1f}%) · INVALID: {counts["INVALID"]}</span></div>'
-            f'<small>Tỷ lệ A/B tính trên {valid} phản hồi hợp lệ. '
+            f'<span>A: {counts["A"]} ({a:.1f}%) · B: {counts["B"]} ({b:.1f}%) · INVALID: {counts["INVALID"]} ({invalid_pct:.1f}% tổng lượt)</span></div>'
+            f'<small>Trong {valid} lượt hợp lệ: A {a:.1f}% · B {b:.1f}%. Biểu đồ tính % trên tổng lượt đã chạy. '
             f'{"Có" if swapped else "Không"} đảo thứ tự hiển thị. Đây là phép đo lựa chọn, không phải kết luận thiên kiến.</small></div>')
 
 def run_ab(model, scenario, option_a, option_b, repetitions, temperature, swap):
