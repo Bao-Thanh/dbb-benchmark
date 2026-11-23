@@ -2,6 +2,13 @@
 from __future__ import annotations
 import io, os, sys, json, zipfile, subprocess, threading
 from pathlib import Path
+
+# Support both VS Code's direct-file Run button and python -m execution.
+if __package__ in (None, ''):
+    repository_root = Path(__file__).resolve().parents[2]
+    if str(repository_root) not in sys.path:
+        sys.path.insert(0, str(repository_root))
+
 import gradio as gr
 import pandas as pd
 from Code.core.dbb_data import DATASET, DBB_SHA256, file_sha256, load_dbb, audited_pairs, choose_pairs, load_bbq, load_crows, load_stereoset, sample_rows
