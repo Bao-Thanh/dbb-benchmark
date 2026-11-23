@@ -173,7 +173,7 @@ def chat(message,history,model,temperature):
     return '',history,'**Tín hiệu từ ngữ cần xem xét:** '+str(len(indicators))+' · Heuristic thăm dò, không phải bias score.'
 
 def build():
-    with gr.Blocks(title='DBB · Research Studio',theme=gr.themes.Soft(primary_hue='violet',neutral_hue='slate'),css=CSS) as demo:
+    with gr.Blocks(title='DBB · Research Studio') as demo:
         gr.HTML(HERO)
         with gr.Row():
             ds=gr.Markdown(dataset_info())
@@ -237,7 +237,7 @@ def build():
                         signal=gr.Markdown('Chưa có tín hiệu phân tích.')
                         clear=gr.Button('Xóa cuộc trò chuyện')
                     with gr.Column(scale=2,elem_classes='panel'):
-                        history=gr.Chatbot(label='Cuộc trò chuyện',type='messages',height=460)
+                        history=gr.Chatbot(label='Cuộc trò chuyện',height=460)
                         prompt=gr.Textbox(label='Câu hỏi',lines=3,placeholder='Đặt câu hỏi hoặc mô tả tình huống…')
                         send=gr.Button('Gửi tin nhắn ↗',variant='primary')
                 send.click(chat,[prompt,history,mc,temp],[prompt,history,signal])
@@ -252,4 +252,5 @@ def build():
 if __name__=='__main__':
     app=build()
     app.queue(default_concurrency_limit=2,max_size=24)
-    app.launch(server_name=os.getenv('DBB_HOST','127.0.0.1'),server_port=int(os.getenv('DBB_PORT','7860')),show_error=True)
+    app.launch(server_name=os.getenv('DBB_HOST','127.0.0.1'),server_port=int(os.getenv('DBB_PORT','7860')),show_error=True,
+               theme=gr.themes.Soft(primary_hue='violet',neutral_hue='slate'),css=CSS)
