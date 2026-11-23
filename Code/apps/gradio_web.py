@@ -1,6 +1,6 @@
 """Gradio DBB Research Studio. Run: python -m Code.apps.gradio_web"""
 from __future__ import annotations
-import io, os, sys, json, zipfile, subprocess, threading
+import io, os, sys, json, zipfile, subprocess, threading, queue
 from pathlib import Path
 
 # Support both VS Code's direct-file Run button and python -m execution.
@@ -167,13 +167,27 @@ def poll_dbb(rid):
         return (msg+'\\n\\n⚠ **Lỗi tạo biểu đồ/báo cáo:** '+str(e),)+no_change
 
 
+def comparison_progress(done, total, model='', benchmark='', state='running'):
+    """Progress card shared by benchmark tabs 2 and 3."""
+    from html import escape
+    done=max(0,int(done))
+    total=max(0,int(total))
+    pct=min(100.0,100.0*done/total) if total else 0.0
+    label={'running':'Đang chạy','completed':'Hoàn thành','failed':'Có lỗi'}.get(state,'Đang chuẩn bị')
+    color='#16a085' if state=='completed' else '#e9a23b' if state=='failed' else '#7667ee'
+    current=(escape(model)+' · '+escape(benchmark)) if model else 'Đang chuẩn bị'
+    return (f'<div class="live-progress"><div class="progress-head"><span>◉ {label}</span>'
+            f'<strong>{pct:.1f}%</strong></div><div class="progress-track">'
+            f'<div class="progress-fill" style="width:{pct:.2f}%;background:{color}"></div></div>'
+            f'<div class="progress-meta"><span>{done:,} / {total:,} câu hỏi</span>'
+            f'<span>{current}</span></div><small>Tiến độ theo số task đã xử lý, không phải số lần retry API.</small></div>')
+
+
 def compare_four(models, benchmarks, count):
-    """Generator wrapper: Gradio requires the callback itself to yield 3 outputs."""
     yield from compare(models, benchmarks, count, 'experiment2')
 
 
 def compare_dbb_bbq(models, count):
-    """Preserve streaming updates while returning all three UI components."""
     yield from compare(models, ['DBB', 'BBQ'], count, 'experiment3')
 
 
@@ -185,33 +199,69 @@ def make_tasks(name,count,cfg):
     return builder(sample_rows(df,count,42),cfg)
 
 def compare(models,benches,count,kind):
-    models=list(models or []);benches=list(benches or []);count=int(count)
-    if not models or not benches:raise gr.Error('Chọn model và benchmark.')
-    if not 1<=count<=500:raise gr.Error('Số mẫu phải từ 1 đến 500.')
-    records=[];errors=[];ids=[]
-    total=len(models)*len(benches)
-    completed=0
-    yield f'**Đang chuẩn bị:** 0/{total} benchmark-model',pd.DataFrame(),None
-    for i,m in enumerate(models):
-        for j,b in enumerate(benches):
-            k=i*len(benches)+j
-            yield f'**Đang chạy:** {m} · {b} ({completed}/{total} hoàn thành)',pd.DataFrame(),None
+    """Stream real per-task progress without Gradio's oversized built-in overlay."""
+    models=list(models or [])
+    benches=list(benches or [])
+    count=int(count)
+    if not models or not benches:
+        raise gr.Error('Chọn model và benchmark.')
+    if not 1<=count<=500:
+        raise gr.Error('Số mẫu phải từ 1 đến 500.')
+    total=len(models)*len(benches)*count
+    done=0
+    records=[]
+    errors=[]
+    ids=[]
+    yield comparison_progress(0,total,state='initializing'), 'Đang chuẩn bị thực nghiệm…', pd.DataFrame(), None
+    for model in models:
+        for benchmark in benches:
+            yield comparison_progress(done,total,model,benchmark), f'**Đang chuẩn bị:** {model} · {benchmark}', gr.update(), gr.update()
             try:
-                cfg={'model':m,'settings':Settings(temperature=0.,seed=42,num_predict=96,timeout=120).metadata(),'repeats':1,'workflow':'gradio_comparison_v1','metric_scope':'exploratory_only','benchmarks':benches,'dataset_hashes':{b:file_sha256(DATASET/BENCH[b][0])}}
-                tasks=make_tasks(b,count,cfg)
-                rid=create_run(kind,cfg);ids.append(rid)
-                evaluate(kind,rid,tasks,progress=lambda done,n:None)
-                records+=load_run(kind,rid)[1]
-            except Exception as e:errors.append(m+' / '+b+': '+str(e))
-            completed+=1
-            yield f'**Tiến độ:** {completed}/{total} model-benchmark hoàn tất · {m} / {b}',pd.DataFrame(),None
+                cfg={'model':model,'settings':Settings(temperature=0.,seed=42,num_predict=96,timeout=120).metadata(),
+                     'repeats':1,'workflow':'gradio_comparison_v1','metric_scope':'exploratory_only',
+                     'benchmarks':benches,'dataset_hashes':{benchmark:file_sha256(DATASET/BENCH[benchmark][0])}}
+                tasks=make_tasks(benchmark,count,cfg)
+                rid=create_run(kind,cfg)
+                ids.append(rid)
+                events=queue.Queue()
+                def work():
+                    try:
+                        evaluate(kind,rid,tasks,progress=lambda n,t:events.put(('progress',n,t)))
+                        events.put(('finished',None,None))
+                    except Exception as exc:
+                        events.put(('error',str(exc),None))
+                thread=threading.Thread(target=work,daemon=True)
+                thread.start()
+                previous=0
+                while True:
+                    event,value,n=events.get()
+                    if event=='progress':
+                        current=min(len(tasks),int(value))
+                        done+=max(0,current-previous)
+                        previous=current
+                        yield comparison_progress(done,total,model,benchmark), (
+                            f'**Đang chạy:** {model} · {benchmark} · {current}/{len(tasks)} câu hỏi'),gr.update(),gr.update()
+                    elif event=='error':
+                        raise RuntimeError(value)
+                    else:
+                        done+=max(0,len(tasks)-previous)
+                        break
+                records.extend(load_run(kind,rid)[1])
+            except Exception as exc:
+                errors.append(model+' / '+benchmark+': '+str(exc))
+                # An unsuccessful batch still occupies a planned segment.
+                # Never mark unprocessed tasks as completed.
+            yield comparison_progress(done,total,model,benchmark), (
+                f'**Đã xử lý:** {done}/{total} task · {model} / {benchmark}'),gr.update(),gr.update()
     if not records:
-        yield '⚠ Không có phản hồi thực. '+'; '.join(errors),pd.DataFrame(),None
+        yield comparison_progress(done,total,state='failed'), '⚠ Không có phản hồi thực. '+'; '.join(errors),pd.DataFrame(),None
         return
     groups=[]
-    for m,g in pd.DataFrame(records).groupby('model'):
-        frame=benchmark_summary(latest_attempts(g.to_dict('records')))
-        if not frame.empty:frame.insert(0,'Model',m);groups.append(frame)
+    for model,group in pd.DataFrame(records).groupby('model'):
+        frame=benchmark_summary(latest_attempts(group.to_dict('records')))
+        if not frame.empty:
+            frame.insert(0,'Model',model)
+            groups.append(frame)
     summary=pd.concat(groups,ignore_index=True) if groups else pd.DataFrame(columns=['Model','Benchmark'])
     planned=pd.MultiIndex.from_product([models,benches],names=['Model','Benchmark']).to_frame(index=False)
     summary=planned.merge(summary,on=['Model','Benchmark'],how='left')
@@ -220,10 +270,12 @@ def compare(models,benches,count,kind):
         z.writestr('attempts.csv',export_csv(records))
         z.writestr('summary.csv',summary.to_csv(index=False).encode('utf-8-sig'))
         z.writestr('method.txt','Exploratory metrics only. DBB single-pass != S; BBQ accuracy != BBQ bias; CrowS/StereoSet are forced-choice proxies.')
-        z.writestr('run_ids.txt','\n'.join(ids))
+        z.writestr('run_ids.txt','\\n'.join(ids))
     note='✓ '+str(len(records))+' phản hồi được ghi · '+str(len(ids))+' audit runs. Các chỉ số không so sánh trực tiếp.'
-    if errors:note+='\n\n⚠ '+'; '.join(errors[:6])
-    yield note,summary,export('compare-'+ids[0],'comparison.zip',buffer.getvalue())
+    if errors:
+        note+='\\n\\n⚠ '+'; '.join(errors[:6])
+    yield comparison_progress(done,total,state='completed' if not errors else 'failed'), note,summary,export('compare-'+ids[0],'comparison.zip',buffer.getvalue())
+
 
 def chat(message,history,model,temperature):
     if not model:raise gr.Error('Chọn model Ollama.')
@@ -294,10 +346,11 @@ def build():
                         n2=gr.Slider(1,100,value=10,step=1,label='Số mẫu / benchmark')
                         go2=gr.Button('▶ Chạy so sánh',variant='primary')
                     with gr.Column(scale=2,elem_classes='panel'):
+                        progress2=gr.HTML(comparison_progress(0,0,state='initializing'))
                         info2=gr.Markdown('Chưa có kết quả.')
                         table2=gr.Dataframe(label='Chỉ số mô tả',interactive=False)
                         file2=gr.File(label='Tải CSV + audit ZIP')
-                go2.click(compare_four,[m2,bs,n2],[info2,table2,file2],show_progress='hidden')
+                go2.click(compare_four,[m2,bs,n2],[progress2,info2,table2,file2],show_progress='hidden')
             with gr.Tab('◫ DBB vs BBQ'):
                 gr.Markdown('## 03 / DBB vs BBQ\nCùng model, hai tập câu hỏi khác nhau. Không suy luận chúng là các cặp tương đương.')
                 with gr.Row():
@@ -306,10 +359,11 @@ def build():
                         n3=gr.Slider(1,100,value=10,step=1,label='Số mẫu / benchmark')
                         go3=gr.Button('▶ Chạy DBB & BBQ',variant='primary')
                     with gr.Column(scale=2,elem_classes='panel'):
+                        progress3=gr.HTML(comparison_progress(0,0,state='initializing'))
                         info3=gr.Markdown('Chưa có kết quả.')
                         table3=gr.Dataframe(label='Bảng kết quả',interactive=False)
                         file3=gr.File(label='Tải báo cáo ZIP')
-                go3.click(compare_dbb_bbq,[m3,n3],[info3,table3,file3],show_progress='hidden')
+                go3.click(compare_dbb_bbq,[m3,n3],[progress3,info3,table3,file3],show_progress='hidden')
             with gr.Tab('◇ AI Bias Lab'):
                 gr.Markdown('## 04 / A/B Choice Lab\nChạy cùng một tình huống nhiều lượt và thống kê model chọn **phương án gốc A hay B**. Có thể đảo vị trí hiển thị để giảm nhiễu do thứ tự.')
                 with gr.Row():
