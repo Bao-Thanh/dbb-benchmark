@@ -1,10 +1,11 @@
-# DBB source code organization
+# Code — organized source (no duplicate root-level Python files)
 
-The **canonical Python implementations** are grouped by responsibility. The thin `Code/*.py` files are backwards-compatible wrappers so existing Streamlit commands, imports, tests, and worker subprocesses can continue to work without requiring users to change commands.
+All **25 active Python implementations** are stored once, inside their respective functional folders. The previous duplicate `Code/*.py` compatibility wrappers have been **deleted**.
 
 ```text
 Code/
-├── apps/                   # Streamlit UI, demos and experiment entrypoints
+├── __init__.py
+├── apps/                   # Streamlit pages, app entrypoint, demos
 │   ├── dbb_web.py
 │   ├── experiment1.py
 │   ├── experiment2.py
@@ -14,7 +15,7 @@ Code/
 │   ├── dbb_demo.py
 │   ├── dbb_ui.py
 │   └── dbb_simple_report_ui.py
-├── core/                   # Data, inference, scoring, state, storage, counterfactuals
+├── core/                   # Dataset, inference, metrics, runner, state, storage
 │   ├── dbb_data.py
 │   ├── dbb_inference.py
 │   ├── dbb_metrics.py
@@ -23,51 +24,37 @@ Code/
 │   ├── dbb_status.py
 │   ├── dbb_counterfactual.py
 │   └── dbb_demo_prompts.py
-├── workers/                # Background batch processing
+├── workers/                # Background processing
 │   ├── dbb_batch_worker.py
 │   └── dbb_compact_worker.py
-├── reporting/              # Plotting and result export
+├── reporting/              # Charts and report export
 │   ├── dbb_charts.py
 │   └── dbb_compact_report.py
-├── scripts/                # CLI and dataset preparation
+├── scripts/                # Data preparation and command-line utilities
 │   ├── compare_models.py
 │   ├── dbb_pipeline.py
 │   ├── build_dbb_pair_index.py
 │   └── download_benchmarks.py
-├── notebooks/              # Four team-contributed notebooks + guide
-│   ├── eda/
-│   ├── experiments/
-│   └── legacy/
-├── legacy/archive_versions/ # 12 historical Python versions
-├── dbb_web.py              # Compatibility entrypoint (wrapper)
-├── experiment1.py          # Compatibility entrypoint (wrapper)
-├── ...                     # Other compatibility wrappers
+├── notebooks/              # Four contributed notebooks (EDA/experiments/legacy)
+├── legacy/archive_versions/ # Historical snapshots (not active)
 └── README.md
 ```
 
-The top-level `tests/` folder contains automated tests. The dataset remains in `Dataset/`.
-
-## Usage
-
-Existing commands remain supported:
+## Run from the repository root
 
 ```powershell
-python -m streamlit run Code/dbb_web.py --server.port 8500
-python -m streamlit run Code/experiment1.py --server.port 8501
-python -m streamlit run Code/experiment2.py --server.port 8502
-python -m streamlit run Code/experiment3.py --server.port 8503
-python Code/dbb_pipeline.py --help
+python -m streamlit run Code/apps/dbb_web.py --server.port 8500
+python -m streamlit run Code/apps/experiment1.py --server.port 8501
+python -m streamlit run Code/apps/experiment2.py --server.port 8502
+python -m streamlit run Code/apps/experiment3.py --server.port 8503
+python Code/scripts/dbb_pipeline.py --help
+python Code/scripts/build_dbb_pair_index.py --help
 python -m pytest -q tests
 python -m compileall -q Code
 ```
 
-For new imports inside `Code/`, use the actual packages (e.g. `from core.dbb_metrics import interpret`) once all callers have migrated. Existing imports such as `from dbb_metrics import interpret` continue to work through compatibility wrappers.
+Imports between moved Python modules use qualified names, e.g. `from Code.core.dbb_data import load_dbb`, so no `Code/dbb_data.py` duplicate is needed. Scripts and Streamlit entrypoints bootstrap the repository root on `sys.path` when executed by file path. Background worker paths are updated.
 
-## Compatibility and review
+**Breaking change:** Old paths like `Code/dbb_web.py` and `Code/dbb_pipeline.py` have been removed at the user's request. Update shortcuts, task scheduler entries, scripts, and shell commands accordingly.
 
-- Active implementations are in the grouped folders, not duplicated in the wrappers.
-- `Path(__file__)` references inside moved modules were adjusted for the extra directory level.
-- Streamlit entrypoints and background worker command paths remain at their original public locations.
-- No dataset or experiment outputs were modified; notebooks remain distinct from the Phase 2 logit-based experiment.
-- **Runtime testing has not been executed in this GitHub-only refactor.** Run the tests and Streamlit/Ollama smoke tests locally before presenting or releasing.
-- The old `Code/legacy/archive_versions/` files are historical snapshots, not production entrypoints.
+Tests were updated to locate the new entrypoints and alias legacy import names during test execution. **Full tests and a real Ollama/Streamlit smoke test have not been run** by this GitHub connector refactor; please run them before relying on the app.

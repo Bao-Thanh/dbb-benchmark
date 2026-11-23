@@ -17,12 +17,12 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-from dbb_data import (DATASET, audited_pairs, choose_pairs, file_sha256,
+from Code.core.dbb_data import (DATASET, audited_pairs, choose_pairs, file_sha256,
                       load_dbb, load_bbq, load_crows, load_stereoset, sample_rows)
-from dbb_inference import Settings, models_available
-from dbb_metrics import benchmark_summary, latest_attempts
-from dbb_runner import dbb_tasks, bbq_tasks, crows_tasks, stereoset_tasks, evaluate
-from dbb_storage import create_run, export_csv, load_run
+from Code.core.dbb_inference import Settings, models_available
+from Code.core.dbb_metrics import benchmark_summary, latest_attempts
+from Code.core.dbb_runner import dbb_tasks, bbq_tasks, crows_tasks, stereoset_tasks, evaluate
+from Code.core.dbb_storage import create_run, export_csv, load_run
 
 DATASETS = {
     'DBB': ('Bias-Dataset.csv', load_dbb, dbb_tasks),

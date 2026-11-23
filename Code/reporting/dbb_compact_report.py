@@ -21,8 +21,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from dbb_metrics import dbb_pair_metrics, latest_attempts
-from dbb_storage import export_csv
+from Code.core.dbb_metrics import dbb_pair_metrics, latest_attempts
+from Code.core.dbb_storage import export_csv
 
 EXPERIMENTAL_METRIC_NAMES = ('Single-Pass Bias', 'True Social Bias', 'Position Bias')
 CATEGORY_ORDER = ('age', 'gender', 'race', 'religions', 'socioeconomic_class')

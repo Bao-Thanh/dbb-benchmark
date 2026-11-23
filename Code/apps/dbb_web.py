@@ -4,10 +4,16 @@ Standalone experiment files can be launched separately if desired.
 Main website: python -m streamlit run Code/dbb_web.py --server.port 8500
 """
 import streamlit as st
-from experiment1 import render as render_experiment1
-from experiment2 import render as render_experiment2
-from experiment3 import render as render_experiment3
-from dbb_chat_demo import render as render_chat_demo
+import sys as _dbb_sys
+from pathlib import Path as _dbb_Path
+_dbb_root = str(_dbb_Path(__file__).resolve().parents[2])
+if _dbb_root not in _dbb_sys.path:
+    _dbb_sys.path.insert(0, _dbb_root)
+
+from Code.apps.experiment1 import render as render_experiment1
+from Code.apps.experiment2 import render as render_experiment2
+from Code.apps.experiment3 import render as render_experiment3
+from Code.apps.dbb_chat_demo import render as render_chat_demo
 
 st.set_page_config(page_title='DBB · Explainable AI Research Lab',page_icon='🧪',layout='wide')
 st.title('🧪 DBB · Explainable AI Research Lab')

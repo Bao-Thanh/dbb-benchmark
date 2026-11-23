@@ -13,12 +13,18 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
-from dbb_data import DATASET, audited_pairs, file_sha256, load_dbb, verify_audited_dbb
-from dbb_inference import Settings, ask_ollama, build_prompt
-from dbb_metrics import interpret
-from dbb_runner import dbb_tasks
-from dbb_storage import append_attempt, folder_for, load_run, run_lock
-from dbb_status import atomic_status
+import sys as _dbb_sys
+from pathlib import Path as _dbb_Path
+_dbb_root = str(_dbb_Path(__file__).resolve().parents[2])
+if _dbb_root not in _dbb_sys.path:
+    _dbb_sys.path.insert(0, _dbb_root)
+
+from Code.core.dbb_data import DATASET, audited_pairs, file_sha256, load_dbb, verify_audited_dbb
+from Code.core.dbb_inference import Settings, ask_ollama, build_prompt
+from Code.core.dbb_metrics import interpret
+from Code.core.dbb_runner import dbb_tasks
+from Code.core.dbb_storage import append_attempt, folder_for, load_run, run_lock
+from Code.core.dbb_status import atomic_status
 
 
 def build_compact_dbb_prompt(context: str, options: dict[str, str]) -> str:

@@ -13,11 +13,17 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from dbb_compact_report import METHOD_NOTE, report_files, sample_disjoint_pairs, zip_files
-from dbb_data import DATASET, DBB_SHA256, audited_pairs, file_sha256, load_dbb
-from dbb_inference import Settings, models_available
-from dbb_storage import create_run, folder_for, load_run
-from dbb_status import read_status
+import sys as _dbb_sys
+from pathlib import Path as _dbb_Path
+_dbb_root = str(_dbb_Path(__file__).resolve().parents[2])
+if _dbb_root not in _dbb_sys.path:
+    _dbb_sys.path.insert(0, _dbb_root)
+
+from Code.reporting.dbb_compact_report import METHOD_NOTE, report_files, sample_disjoint_pairs, zip_files
+from Code.core.dbb_data import DATASET, DBB_SHA256, audited_pairs, file_sha256, load_dbb
+from Code.core.dbb_inference import Settings, models_available
+from Code.core.dbb_storage import create_run, folder_for, load_run
+from Code.core.dbb_status import read_status
 
 QUESTIONS_PRESETS = [10, 20, 50, 100, 200, 500]
 REPEATS = 10
@@ -56,7 +62,7 @@ def create_and_spawn(models: list[str], n_questions: int, category: str,
     }
     run_id = create_run('experiment1',cfg)
     folder = folder_for('experiment1',run_id)
-    worker = Path(__file__).resolve().parents[1] / 'dbb_compact_worker.py'
+    worker = Path(__file__).resolve().parents[1] / 'workers' / 'dbb_compact_worker.py'
     cmd = [sys.executable,'-u',str(worker),'--run-id',run_id]
     with (folder/'worker.log').open('a',encoding='utf-8') as log:
         proc=subprocess.Popen(cmd, cwd=str(DATASET.parent),stdin=subprocess.DEVNULL,

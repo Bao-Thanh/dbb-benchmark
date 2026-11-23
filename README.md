@@ -12,7 +12,7 @@ Website đánh giá thiên kiến xã hội trong LLM sử dụng **Streamlit + 
 | **2 — Bốn benchmark** | So sánh cách đặt câu hỏi DBB, BBQ, CrowS-Pairs, StereoSet | Các chỉ số thăm dò khác định nghĩa, không xếp hạng sai |
 | **3 — DBB vs BBQ** | Xem trường hợp cụ thể, dự đoán và truy vết phản hồi | Prompt, raw answer, parser, nhãn và giới hạn diễn giải |
 
-Các entrypoint `Code/experiment1.py`, `Code/experiment2.py`, `Code/experiment3.py` có thể mở riêng. `Code/dbb_web.py` tổng hợp cả ba. Module dùng chung: `dbb_data`, `dbb_inference`, `dbb_metrics`, `dbb_runner`, `dbb_storage`. Thực nghiệm 1 dùng thêm `dbb_compact_worker.py` (xử lý nền) và `dbb_compact_report.py` (báo cáo).
+Các entrypoint `Code/apps/experiment1.py`, `Code/apps/experiment2.py`, `Code/apps/experiment3.py` có thể mở riêng. `Code/apps/dbb_web.py` tổng hợp cả ba. Module dùng chung: `dbb_data`, `dbb_inference`, `dbb_metrics`, `dbb_runner`, `dbb_storage`. Thực nghiệm 1 dùng thêm `dbb_compact_worker.py` (xử lý nền) và `dbb_compact_report.py` (báo cáo).
 
 ## 2. Chuẩn bị Windows
 
@@ -33,15 +33,15 @@ Nếu đã có `.venv`, bỏ qua lệnh tạo môi trường. Giữ Ollama chạ
 **Website chính (một server, localhost:8500):**
 
 ```powershell
-python -m streamlit run Code/dbb_web.py --server.address 127.0.0.1 --server.port 8500
+python -m streamlit run Code/apps/dbb_web.py --server.address 127.0.0.1 --server.port 8500
 ```
 
 **Chạy riêng (không cần chạy đồng thời):**
 
 ```powershell
-python -m streamlit run Code/experiment1.py --server.port 8501
-python -m streamlit run Code/experiment2.py --server.port 8502
-python -m streamlit run Code/experiment3.py --server.port 8503
+python -m streamlit run Code/apps/experiment1.py --server.port 8501
+python -m streamlit run Code/apps/experiment2.py --server.port 8502
+python -m streamlit run Code/apps/experiment3.py --server.port 8503
 ```
 
 ## 3. Thực nghiệm 1 — Cách dùng giao diện đơn giản
@@ -80,3 +80,7 @@ python -m compileall -q Code
 ```
 
 Test tự động sử dụng fixture giả lập để **kiểm chứng logic**, không tạo kết quả nghiên cứu. Cần chạy kiểm thử Ollama và Streamlit thật trên máy Windows trước buổi thuyết trình: tốc độ/RAM/timeout có thể khác tùy model. Nút Dừng là dừng hợp tác *sau một request đang xử lý*, không hủy ngay HTTP call hiện tại.
+
+## Cấu trúc source mới
+
+Tất cả file Python đã được phân loại trong [`Code/`](Code/README.md) theo `apps/`, `core/`, `workers/`, `reporting/`, `scripts/`. Không còn file `.py` trùng lặp ở gốc `Code/`; lệnh chạy cần dùng đường dẫn mới.

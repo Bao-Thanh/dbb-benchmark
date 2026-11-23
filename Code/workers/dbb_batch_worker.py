@@ -1,4 +1,10 @@
 """Background DBB evaluation worker. This is inference, NOT model training."""
+import sys as _dbb_sys
+from pathlib import Path as _dbb_Path
+_dbb_root = str(_dbb_Path(__file__).resolve().parents[2])
+if _dbb_root not in _dbb_sys.path:
+    _dbb_sys.path.insert(0, _dbb_root)
+
 import argparse
 import csv
 import hashlib

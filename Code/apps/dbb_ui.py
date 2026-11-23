@@ -3,8 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 import pandas as pd
 import streamlit as st
-from dbb_inference import Settings, models_available
-from dbb_storage import list_runs, load_run, export_csv
+from Code.core.dbb_inference import Settings, models_available
+from Code.core.dbb_storage import list_runs, load_run, export_csv
 
 
 def model_selector(key: str):
@@ -70,7 +70,7 @@ def prior_runs(kind: str, key: str):
 
 def legacy_results(kind: str):
     """Read-only compatibility viewer: old outputs remain untouched."""
-    from dbb_data import ROOT
+    from Code.core.dbb_data import ROOT
     folders={'experiment1':ROOT/'Results'/'batch_demo',
              'experiment2':ROOT/'Results'/'experiment2',
              'experiment3':ROOT/'Results'/'experiment3'}

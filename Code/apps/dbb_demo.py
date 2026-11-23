@@ -1,5 +1,11 @@
 """Streamlit demo for local DBB experiments. Exploratory, not an official bias score."""
 from pathlib import Path
+import sys as _dbb_sys
+from pathlib import Path as _dbb_Path
+_dbb_root = str(_dbb_Path(__file__).resolve().parents[2])
+if _dbb_root not in _dbb_sys.path:
+    _dbb_sys.path.insert(0, _dbb_root)
+
 import re
 import json
 import time
@@ -140,9 +146,9 @@ with st.expander('🚀 Chạy toàn bộ CSV / chạy hàng loạt', expanded=Tr
     st.info('Đây là đánh giá (inference), không phải huấn luyện lại trọng số model. Kết quả lưu riêng tại Results/batch_demo.')
     import subprocess
     import sys
-    from dbb_batch_worker import sample_rows, run_id_for
+    from Code.workers.dbb_batch_worker import sample_rows, run_id_for
 
-    worker = Path(__file__).resolve().parents[1] / 'dbb_batch_worker.py'
+    worker = Path(__file__).resolve().parents[1] / 'workers' / 'dbb_batch_worker.py'
     if not worker.exists():
         st.error('Thiếu file Code/dbb_batch_worker.py. Hãy tải cả hai file vào thư mục Code.')
     else:

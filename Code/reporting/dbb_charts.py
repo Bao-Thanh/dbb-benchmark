@@ -10,7 +10,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from dbb_metrics import latest_attempts
+from Code.core.dbb_metrics import latest_attempts
 
 
 def category_pair_rates(scores: pd.DataFrame) -> pd.DataFrame:
