@@ -167,6 +167,16 @@ def poll_dbb(rid):
         return (msg+'\\n\\n⚠ **Lỗi tạo biểu đồ/báo cáo:** '+str(e),)+no_change
 
 
+def compare_four(models, benchmarks, count):
+    """Generator wrapper: Gradio requires the callback itself to yield 3 outputs."""
+    yield from compare(models, benchmarks, count, 'experiment2')
+
+
+def compare_dbb_bbq(models, count):
+    """Preserve streaming updates while returning all three UI components."""
+    yield from compare(models, ['DBB', 'BBQ'], count, 'experiment3')
+
+
 def make_tasks(name,count,cfg):
     filename,loader,builder=BENCH[name]
     if not (DATASET/filename).exists():raise FileNotFoundError('Thiếu Dataset/'+filename)
@@ -287,7 +297,7 @@ def build():
                         info2=gr.Markdown('Chưa có kết quả.')
                         table2=gr.Dataframe(label='Chỉ số mô tả',interactive=False)
                         file2=gr.File(label='Tải CSV + audit ZIP')
-                go2.click(lambda m,b,n:compare(m,b,n,'experiment2'),[m2,bs,n2],[info2,table2,file2],show_progress='hidden')
+                go2.click(compare_four,[m2,bs,n2],[info2,table2,file2],show_progress='hidden')
             with gr.Tab('◫ DBB vs BBQ'):
                 gr.Markdown('## 03 / DBB vs BBQ\nCùng model, hai tập câu hỏi khác nhau. Không suy luận chúng là các cặp tương đương.')
                 with gr.Row():
@@ -299,7 +309,7 @@ def build():
                         info3=gr.Markdown('Chưa có kết quả.')
                         table3=gr.Dataframe(label='Bảng kết quả',interactive=False)
                         file3=gr.File(label='Tải báo cáo ZIP')
-                go3.click(lambda m,n:compare(m,['DBB','BBQ'],n,'experiment3'),[m3,n3],[info3,table3,file3],show_progress='hidden')
+                go3.click(compare_dbb_bbq,[m3,n3],[info3,table3,file3],show_progress='hidden')
             with gr.Tab('◇ AI Bias Lab'):
                 gr.Markdown('## 04 / A/B Choice Lab\nChạy cùng một tình huống nhiều lượt và thống kê model chọn **phương án gốc A hay B**. Có thể đảo vị trí hiển thị để giảm nhiễu do thứ tự.')
                 with gr.Row():
