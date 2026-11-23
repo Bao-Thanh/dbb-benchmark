@@ -15,16 +15,19 @@ from Code.core.dbb_inference import Settings, ask_ollama
 from Code.core.dbb_metrics import parse_choice
 from Code.core.dbb_storage import RESULTS
 
-def chart(path: Path, counts: dict[str,int], total: int):
+def chart(path: Path, counts: dict[str,int], total: int, option_a: str, option_b: str):
     fig, ax = plt.subplots(figsize=(8.0, 4.0), dpi=145)
     fig.patch.set_facecolor("#ffffff")
-    bars = ax.bar(["Phương án A", "Phương án B", "Không hợp lệ"],
+    labels = [option_a, option_b, "Không hợp lệ"]
+    labels = [(v[:36] + "…" if len(v)>36 else v) for v in labels]
+    bars = ax.bar(labels,
                   [counts["A"], counts["B"], counts["INVALID"]],
                   color=["#7468ef", "#2aafaa", "#e9a34b"], width=.56)
     ax.set_ylim(0, max(1, max(counts.values()) * 1.3))
     valid = counts["A"] + counts["B"]
     ax.set_ylabel("Số lượt (trên tổng lượt đã chạy)")
-    ax.set_title("Kết quả lựa chọn A/B · " + str(total) + " lượt", weight="bold", pad=20)
+    ax.set_title("Kết quả theo NỘI DUNG phương án · " + str(total) + " lượt", weight="bold", pad=20)
+    ax.tick_params(axis="x", labelsize=9, rotation=8)
     ax.spines[["top", "right"]].set_visible(False)
     ax.grid(axis="y", alpha=.12)
     ax.set_axisbelow(True)
@@ -39,7 +42,7 @@ def chart(path: Path, counts: dict[str,int], total: int):
     fig.savefig(path, bbox_inches="tight")
     plt.close(fig)
 
-def summary(counts, done, total, swapped, model):
+def summary(counts, done, total, swapped, model, option_a, option_b):
     from html import escape
     valid=counts["A"]+counts["B"]
     a=100*counts["A"]/valid if valid else 0
@@ -51,8 +54,8 @@ def summary(counts, done, total, swapped, model):
             f'<strong>{percent:.1f}%</strong></div>'
             f'<div class="progress-track"><div class="progress-fill" style="width:{percent:.1f}%"></div></div>'
             f'<div class="progress-meta"><span>{done}/{total} lượt</span>'
-            f'<span>A: {counts["A"]} ({a:.1f}%) · B: {counts["B"]} ({b:.1f}%) · INVALID: {counts["INVALID"]} ({invalid_pct:.1f}% tổng lượt)</span></div>'
-            f'<small>Trong {valid} lượt hợp lệ: A {a:.1f}% · B {b:.1f}%. Biểu đồ tính % trên tổng lượt đã chạy. '
+            f'<span>{escape(option_a[:45])}: {counts["A"]} ({a:.1f}%) · {escape(option_b[:45])}: {counts["B"]} ({b:.1f}%) · INVALID: {counts["INVALID"]} ({invalid_pct:.1f}% tổng lượt)</span></div>'
+            f'<small>Trong {valid} lượt hợp lệ: {escape(option_a[:35])} {a:.1f}% · {escape(option_b[:35])} {b:.1f}%. Biểu đồ tính % trên tổng lượt đã chạy. '
             f'{"Có" if swapped else "Không"} đảo thứ tự hiển thị. Đây là phép đo lựa chọn, không phải kết luận thiên kiến.</small></div>')
 
 def run_ab(model, scenario, option_a, option_b, repetitions, temperature, swap):
@@ -76,7 +79,7 @@ def run_ab(model, scenario, option_a, option_b, repetitions, temperature, swap):
     csv_path=folder/"trials.csv"
     chart_path=folder/"ab_comparison.png"
     with csv_path.open("w",newline="",encoding="utf-8-sig") as handle:
-        writer=csv.DictWriter(handle,fieldnames=["trial","model","display_order","display_A","display_B","raw","parsed_display","selected_original","valid","parser_reason","error","seconds","seed"])
+        writer=csv.DictWriter(handle,fieldnames=["trial","model","display_order","display_A","display_B","raw","parsed_display","selected_original","selected_content","valid","parser_reason","error","seconds","seed"])
         writer.writeheader()
         for i in range(repetitions):
             swapped=bool(swap) and i%2==1
@@ -96,12 +99,14 @@ def run_ab(model, scenario, option_a, option_b, repetitions, temperature, swap):
             counts[original]+=1
             record={"trial":i+1,"model":model,"display_order":"swapped" if swapped else "original",
                     "display_A":shown_a,"display_B":shown_b,"raw":response.get("raw",""),
-                    "parsed_display":letter,"selected_original":original,"valid":original!="INVALID",
+                    "parsed_display":letter,"selected_original":original,
+                    "selected_content":option_a if original=="A" else option_b if original=="B" else "",
+                    "valid":original!="INVALID",
                     "parser_reason":reason,"error":response.get("error",""),"seconds":response.get("seconds"),
                     "seed":seed}
             writer.writerow(record)
             handle.flush()
             records.append(record)
             if i==repetitions-1 or i%2==0:
-                chart(chart_path,counts,i+1)
-            yield summary(counts,i+1,repetitions,swap,model),str(chart_path),pd.DataFrame(records),str(csv_path)
+                chart(chart_path,counts,i+1,option_a,option_b)
+            yield summary(counts,i+1,repetitions,swap,model,option_a,option_b),str(chart_path),pd.DataFrame(records),str(csv_path)
