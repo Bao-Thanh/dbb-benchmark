@@ -170,9 +170,11 @@ def poll_dbb(rid):
 def comparison_progress(done, total, model='', benchmark='', state='running'):
     """Progress card shared by benchmark tabs 2 and 3."""
     from html import escape
-    done=max(0,int(done))
     total=max(0,int(total))
-    pct=min(100.0,100.0*done/total) if total else 0.0
+    done=min(max(0,int(done)),total)
+    pct=(100.0*done/total) if total else 0.0
+    if state not in ('completed','failed') and pct>=100.0:
+        pct=99.9  # Reserve 100% for the final completed state.
     label={'running':'Đang chạy','completed':'Hoàn thành','failed':'Có lỗi'}.get(state,'Đang chuẩn bị')
     color='#16a085' if state=='completed' else '#e9a23b' if state=='failed' else '#7667ee'
     current=(escape(model)+' · '+escape(benchmark)) if model else ('Đã xử lý xong' if state=='completed' else 'Có lỗi khi chạy' if state=='failed' else 'Đang chuẩn bị')
