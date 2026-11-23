@@ -275,7 +275,7 @@ def build():
                         file3=gr.File(label='Tải báo cáo ZIP')
                 go3.click(lambda m,n:compare(m,['DBB','BBQ'],n,'experiment3'),[m3,n3],[info3,table3,file3],show_progress='hidden')
             with gr.Tab('◇ AI Bias Lab'):
-                gr.Markdown('## 04 / A/B Choice Lab\\nChạy cùng một tình huống nhiều lượt và thống kê model chọn **phương án gốc A hay B**. Có thể đảo vị trí hiển thị để giảm nhiễu do thứ tự.')
+                gr.Markdown('## 04 / A/B Choice Lab\nChạy cùng một tình huống nhiều lượt và thống kê model chọn **phương án gốc A hay B**. Có thể đảo vị trí hiển thị để giảm nhiễu do thứ tự.')
                 with gr.Row():
                     with gr.Column(scale=1,elem_classes='panel'):
                         mc=gr.Dropdown(label='Model Ollama',choices=[])
