@@ -1,60 +1,60 @@
-# Code — organized source (no duplicate root-level Python files)
+# Code architecture — Gradio Research Studio
 
-All **25 active Python implementations** are stored once, inside their respective functional folders. The previous duplicate `Code/*.py` compatibility wrappers have been **deleted**.
+A local-first research dashboard for the **Description-based Bias Benchmark (DBB)**. The website now uses **Gradio**, not Streamlit. It retains the existing audited data, model inference, experiment runner, report generator and append-only storage.
 
-```text
-Code/
-├── __init__.py
-├── apps/                   # Streamlit pages, app entrypoint, demos
-│   ├── dbb_web.py
-│   ├── experiment1.py
-│   ├── experiment2.py
-│   ├── experiment3.py
-│   ├── experiment3_dbb_bbq.py
-│   ├── dbb_chat_demo.py
-│   ├── dbb_demo.py
-│   ├── dbb_ui.py
-│   └── dbb_simple_report_ui.py
-├── core/                   # Dataset, inference, metrics, runner, state, storage
-│   ├── dbb_data.py
-│   ├── dbb_inference.py
-│   ├── dbb_metrics.py
-│   ├── dbb_runner.py
-│   ├── dbb_storage.py
-│   ├── dbb_status.py
-│   ├── dbb_counterfactual.py
-│   └── dbb_demo_prompts.py
-├── workers/                # Background processing
-│   ├── dbb_batch_worker.py
-│   └── dbb_compact_worker.py
-├── reporting/              # Charts and report export
-│   ├── dbb_charts.py
-│   └── dbb_compact_report.py
-├── scripts/                # Data preparation and command-line utilities
-│   ├── compare_models.py
-│   ├── dbb_pipeline.py
-│   ├── build_dbb_pair_index.py
-│   └── download_benchmarks.py
-├── notebooks/              # Four contributed notebooks (EDA/experiments/legacy)
-├── legacy/archive_versions/ # Historical snapshots (not active)
-└── README.md
-```
+**Reference:** Pan et al., *What's Not Said Still Hurts*, Findings EMNLP 2025: https://aclanthology.org/2025.findings-emnlp.76/
 
-## Run from the repository root
+## Quick start (Windows PowerShell)
+
+Run these commands from the repository root:
 
 ```powershell
-python -m streamlit run Code/apps/dbb_web.py --server.port 8500
-python -m streamlit run Code/apps/experiment1.py --server.port 8501
-python -m streamlit run Code/apps/experiment2.py --server.port 8502
-python -m streamlit run Code/apps/experiment3.py --server.port 8503
-python Code/scripts/dbb_pipeline.py --help
-python Code/scripts/build_dbb_pair_index.py --help
-python -m pytest -q tests
-python -m compileall -q Code
+git pull origin main
+py -3 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+ollama list
+python -m Code.apps.gradio_web
 ```
 
-Imports between moved Python modules use qualified names, e.g. `from Code.core.dbb_data import load_dbb`, so no `Code/dbb_data.py` duplicate is needed. Scripts and Streamlit entrypoints bootstrap the repository root on `sys.path` when executed by file path. Background worker paths are updated.
+Open **http://127.0.0.1:7860**. Ollama must be running at **http://127.0.0.1:11434** and at least one model must already be installed. No cloud API keys are required. The default Gradio bind address is localhost only; set `DBB_HOST` or `DBB_PORT` to change it.
 
-**Breaking change:** Old paths like `Code/dbb_web.py` and `Code/dbb_pipeline.py` have been removed at the user's request. Update shortcuts, task scheduler entries, scripts, and shell commands accordingly.
+## Four research workspaces
 
-Tests were updated to locate the new entrypoints and alias legacy import names during test execution. **Full tests and a real Ollama/Streamlit smoke test have not been run** by this GitHub connector refactor; please run them before relying on the app.
+1. **DBB Benchmark** — choose local models, category and an even number of questions; start an audited subprocess; refresh progress, request safe stop, view actual DBB S≥20 category charts and exploratory diagnostics, and download PNG/CSV/ZIP.
+2. **Four benchmarks** — compare DBB, BBQ, CrowS-Pairs and StereoSet using their separate exploratory measurements. The scores are *not* interchangeable.
+3. **DBB vs BBQ** — run the two different benchmarks on the same model(s). These are not matched questions and the scores are not directly comparable.
+4. **AI Bias Lab** — local Ollama chat with a conservative lexical indicator display and JSONL audit; indicators are **not** evidence of discrimination.
+
+Every experiment uses real Ollama outputs. If the dataset is missing or the model is offline, the UI shows an error; it does not fabricate a result.
+
+## Data and scientific caveats
+
+Place original audited files under `Dataset/`:
+- `Bias-Dataset.csv` — required for DBB
+- `BBQ-Dataset.csv`, `CrowS-Pairs.csv`, `StereoSet.csv` — required for their respective comparison tabs
+
+DBB requires the audited SHA256. DBB S is computed from repeated counterfactual questions; each question needs at least 10 valid responses. The two additional plotted diagnostics are exploratory, and **True Social Bias is N/A** rather than a made-up score. BBQ accuracy is not BBQ bias score; CrowS-Pairs and StereoSet forced-choice proxies are not the original likelihood-based metrics.
+
+Results are written under `Results/explainable/`; exported Gradio files under `Results/gradio_exports/`. The interface never overwrites old experiment runs. Large datasets, models and results should remain out of Git.
+
+## Code layout
+
+- `Code/apps/gradio_web.py` — single Gradio website entrypoint
+- `Code/core/` — data loading, Ollama inference, metrics, storage, counterfactuals
+- `Code/workers/` — experiment subprocesses
+- `Code/reporting/` — charts and report archives
+- `Code/scripts/` — CLI and dataset setup
+- `Code/notebooks/` — four contributed notebooks
+- `Code/legacy/archive_versions/` — archived historical scripts
+
+The old Streamlit UI source files were removed from the active `Code/apps/` directory. Existing worker/reporting and test logic is preserved.
+
+## Tests
+
+```powershell
+python -m compileall -q Code
+python -m pytest -q tests
+```
+
+The GitHub-only migration has not been exercised against a real Windows Ollama GPU environment. Verify model connectivity, UI actions, background workers and ZIP exports locally before the presentation.
