@@ -42,13 +42,23 @@ def chart(path: Path, counts: dict[str,int], total: int, option_a: str, option_b
     fig.savefig(path, bbox_inches="tight")
     plt.close(fig)
 
-def summary(counts, done, total, swapped, model, option_a, option_b):
+def summary(counts, done, total, swapped, model, option_a, option_b, records=None):
     from html import escape
     valid=counts["A"]+counts["B"]
     a=100*counts["A"]/valid if valid else 0
     b=100*counts["B"]/valid if valid else 0
     invalid_pct=100*counts["INVALID"]/done if done else 0
     percent=100*done/total
+    records=records or []
+    diagnostics=""
+    if swapped:
+        lines=[]
+        for order,position in (("original","A"),("swapped","B")):
+            subset=[r for r in records if r["display_order"]==order and r["valid"]]
+            chosen=sum(r["selected_original"]=="A" for r in subset)
+            value=f"{chosen}/{len(subset)} ({chosen/len(subset)*100:.1f}%)" if subset else "N/A"
+            lines.append(f"{escape(option_a[:30])} ở vị trí {position}: {value}")
+        diagnostics='<div style="margin-top:10px"><strong>Kiểm soát vị trí:</strong> '+' · '.join(lines)+'. Chỉ diễn giải ưu tiên nội dung khi kết quả ổn định ở cả hai vị trí.</div>'
     return (f'<div class="live-progress"><div class="progress-head"><span>◉ '
             f'{"Hoàn thành" if done==total else "Đang chạy"} · {escape(model)}</span>'
             f'<strong>{percent:.1f}%</strong></div>'
@@ -56,7 +66,7 @@ def summary(counts, done, total, swapped, model, option_a, option_b):
             f'<div class="progress-meta"><span>{done}/{total} lượt</span>'
             f'<span>{escape(option_a[:45])}: {counts["A"]} ({a:.1f}%) · {escape(option_b[:45])}: {counts["B"]} ({b:.1f}%) · INVALID: {counts["INVALID"]} ({invalid_pct:.1f}% tổng lượt)</span></div>'
             f'<small>Trong {valid} lượt hợp lệ: {escape(option_a[:35])} {a:.1f}% · {escape(option_b[:35])} {b:.1f}%. Biểu đồ tính % trên tổng lượt đã chạy. '
-            f'{"Có" if swapped else "Không"} đảo thứ tự hiển thị. Đây là phép đo lựa chọn, không phải kết luận thiên kiến.</small></div>')
+            f'{"Có" if swapped else "Không"} đảo thứ tự hiển thị. Đây là phép đo lựa chọn, không phải kết luận thiên kiến.</small>{diagnostics}</div>')
 
 def run_ab(model, scenario, option_a, option_b, repetitions, temperature, swap):
     if not model:
@@ -67,11 +77,13 @@ def run_ab(model, scenario, option_a, option_b, repetitions, temperature, swap):
     repetitions=int(repetitions)
     if not 2 <= repetitions <= 200:
         raise ValueError("Số lượt phải từ 2 đến 200.")
+    if swap and repetitions % 2:
+        raise ValueError("Khi bật đảo A/B, hãy chọn số lượt chẵn để tạo đủ cặp đối chứng.")
     folder=RESULTS/"ab_lab"/(datetime.now(timezone.utc).strftime("%Y%m%d")+"-"+uuid4().hex[:10])
     folder.mkdir(parents=True, exist_ok=False)
     manifest={"model":model,"scenario":scenario,"option_a":option_a,"option_b":option_b,
               "repetitions":repetitions,"temperature":float(temperature),"swap":bool(swap),
-              "seed_base":42,"created_at_utc":datetime.now(timezone.utc).isoformat(),
+              "seed_base":42,"paired_seed":bool(swap),"created_at_utc":datetime.now(timezone.utc).isoformat(),
               "method":"Forced-choice exploratory A/B; percentages exclude invalid responses; positional balancing is descriptive only."}
     (folder/"manifest.json").write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding="utf-8")
     counts={"A":0,"B":0,"INVALID":0}
@@ -87,7 +99,7 @@ def run_ab(model, scenario, option_a, option_b, repetitions, temperature, swap):
             shown_b=option_a if swapped else option_b
             prompt=(scenario+"\n\nA. "+shown_a+"\n\nB. "+shown_b+
                     "\n\nChoose exactly one of the two options. Respond with ONLY A or B.")
-            seed=42+i
+            seed=42+(i//2 if swap else i)
             response=ask_ollama(model,prompt,Settings(temperature=float(temperature),
                               seed=seed,num_predict=24,num_ctx=2048,timeout=120))
             letter,reason=parse_choice(response.get("raw",""),"AB")
@@ -109,4 +121,4 @@ def run_ab(model, scenario, option_a, option_b, repetitions, temperature, swap):
             records.append(record)
             if i==repetitions-1 or i%2==0:
                 chart(chart_path,counts,i+1,option_a,option_b)
-            yield summary(counts,i+1,repetitions,swap,model,option_a,option_b),str(chart_path),pd.DataFrame(records),str(csv_path)
+            yield summary(counts,i+1,repetitions,swap,model,option_a,option_b,records),str(chart_path),pd.DataFrame(records),str(csv_path)
