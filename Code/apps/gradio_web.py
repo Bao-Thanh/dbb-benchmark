@@ -326,7 +326,7 @@ def compare(models,benches,count,kind):
                     done+=max(0,current-previous)
                     previous=current
                     yield comparison_progress(done,total,model,benchmark), (
-                        f'**Đang chạy:** {model} · {benchmark} · {current}/{len(tasks)} câu hỏi'),gr.update(),gr.update(),gr.update()
+                        f'**Đang chạy:** {model} · {benchmark} · {current}/{len(tasks)} câu hỏi'),gr.update(),gr.update(),gr.update(),gr.update()
                 elif event=='error':
                     raise RuntimeError(value)
                 else:
@@ -336,7 +336,7 @@ def compare(models,benches,count,kind):
         except Exception as exc:
             errors.append(model+' / '+benchmark+': '+str(exc))
         yield comparison_progress(done,total,model,benchmark), (
-            f'**Đã xử lý:** {done}/{total} task · {model} / {benchmark}'),gr.update(),gr.update(),gr.update()
+            f'**Đã xử lý:** {done}/{total} task · {model} / {benchmark}'),gr.update(),gr.update(),gr.update(),gr.update()
     if not records:
         yield comparison_progress(done,total,state='failed'), '⚠ Không có phản hồi thực. '+'; '.join(errors),pd.DataFrame(),None,None,None
         return
