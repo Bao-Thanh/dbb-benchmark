@@ -31,7 +31,7 @@ CSS="""
 .hero .eyebrow{font-size:12px;letter-spacing:2.4px;color:#c4bcff;font-weight:800}.hero h1{font-size:clamp(35px,5vw,65px)!important;letter-spacing:-2.4px!important;line-height:1.12!important;margin:20px 0!important;color:white!important}.hero h1 span{color:#bdb4ff}.hero p{color:#dbe1fb;font-size:16px;max-width:720px;line-height:1.7}.tags{display:flex;flex-wrap:wrap;gap:10px;margin-top:24px}.tags span{border:1px solid #ffffff36;border-radius:30px;padding:9px 14px;background:#ffffff0e;font-size:12px;color:#f0efff}
 .gradio-container .tab-nav{gap:9px;border:0!important;background:transparent!important;margin:20px 0!important}.gradio-container .tab-nav button{border-radius:13px!important;border:1px solid #e2e8f2!important;background:white!important;padding:13px 20px!important;font-weight:700!important;color:#657189!important}.gradio-container .tab-nav button.selected{background:#27315d!important;color:white!important}
 .panel{border:1px solid #e2e8f2!important;border-radius:20px!important;background:#fff!important;padding:20px!important;box-shadow:0 10px 30px #182a4a09!important}.gradio-container button.primary{background:linear-gradient(105deg,#7468ef,#5146c7)!important;border:0!important;border-radius:12px!important;font-weight:750!important}.gradio-container button.secondary{border-radius:12px!important}
-.stat{border-radius:16px;padding:20px;background:#f4f3ff;border:1px solid #dedafb}.stat small{font-size:12px;color:#6f6b9c;font-weight:750}.stat strong{display:block;font-size:30px;color:#28225f;margin-top:5px}.footer{color:#8290a3;font-size:12px;padding:25px 5px;border-top:1px solid #e0e6f0;margin-top:26px}
+ .live-progress{background:#fff;border:1px solid #e1e6f2;border-radius:17px;padding:21px 23px;margin:12px 0;box-shadow:0 8px 22px #16224a0b}.progress-head{display:flex;justify-content:space-between;align-items:center;color:#273259;font-weight:800;font-size:17px;margin-bottom:14px}.progress-head strong{font-size:24px;color:#5448c5}.progress-track{height:14px;border-radius:30px;background:#ebeaf7;overflow:hidden}.progress-fill{height:100%;border-radius:30px;transition:width .4s ease;background:linear-gradient(90deg,#8479ff,#594cdb)}.progress-meta{display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;font-size:13px;font-weight:700;color:#4f5b75;margin-top:13px}.progress-model{font-size:12px;color:#6d7891;margin-top:8px}.live-progress small{display:block;font-size:11px;color:#9aa4b5;margin-top:7px}.stat{border-radius:16px;padding:20px;background:#f4f3ff;border:1px solid #dedafb}.stat small{font-size:12px;color:#6f6b9c;font-weight:750}.stat strong{display:block;font-size:30px;color:#28225f;margin-top:5px}.footer{color:#8290a3;font-size:12px;padding:25px 5px;border-top:1px solid #e0e6f0;margin-top:26px}
 @media(max-width:700px){.hero{padding:30px 25px}.hero h1{letter-spacing:-1px!important}}
 """
 HERO='<div class="hero"><div class="eyebrow">◈ RESEARCH PLATFORM &nbsp; • &nbsp; LOCAL FIRST</div><h1>Understand the patterns.<br><span>Question the bias.</span></h1><p>DBB Research Studio — phân tích thiên kiến xã hội trong mô hình ngôn ngữ, từ cặp câu hỏi đối chứng đến kết quả có thể kiểm tra và tải về.</p><div class="tags"><span>◈ Counterfactual pairs</span><span>◈ Transparent evaluation</span><span>◈ Local Ollama</span><span>◈ Real results only</span></div></div>'
@@ -82,6 +82,31 @@ def stop_dbb(rid):
     if not (folder/'manifest.json').exists():return 'Không tìm thấy run.'
     (folder/'stop.request').touch(exist_ok=True)
     return 'Đã yêu cầu dừng an toàn sau lượt đang xử lý.'
+
+def progress_panel(rid):
+    """Lightweight live progress, refreshed independently of expensive report generation."""
+    if not rid:
+        return '<div class="stat"><small>TRẠNG THÁI THỰC NGHIỆM</small><strong>Chưa bắt đầu</strong><p>Chọn model và nhấn Bắt đầu đánh giá.</p></div>'
+    from html import escape
+    state=read_status(rid)
+    phase=str(state.get('state') or 'initializing')
+    done=max(0,int(state.get('done') or 0))
+    total=max(0,int(state.get('total') or 0))
+    pct=min(100.0,100.0*done/total) if total else 0.0
+    model=escape(str(state.get('model') or 'Đang khởi tạo'))
+    labels={'initializing':'Đang khởi tạo','running':'Đang chạy','completed':'Hoàn thành',
+            'stopped':'Đã dừng','failed':'Thất bại'}
+    label=labels.get(phase,escape(phase))
+    color={'completed':'#16a085','failed':'#e15759','stopped':'#e9a23b'}.get(phase,'#7667ee')
+    valid=int(state.get('valid') or 0)
+    invalid=int(state.get('invalid') or 0)
+    hint='Kết quả đã sẵn sàng. Nhấn Cập nhật tiến độ để tải báo cáo.' if phase=='completed' else 'Tự động cập nhật mỗi 2 giây · số lượt xử lý thực tế'
+    return (f'<div class="live-progress"><div class="progress-head"><span>◉ {label}</span>'
+            f'<strong>{pct:.1f}%</strong></div><div class="progress-track">'
+            f'<div class="progress-fill" style="width:{pct:.2f}%;background:{color}"></div></div>'
+            f'<div class="progress-meta"><span>{done:,} / {total:,} lượt</span>'
+            f'<span>Hợp lệ: {valid:,} · INVALID: {invalid:,}</span></div>'
+            f'<div class="progress-model">Model: {model}</div><small>{hint}</small></div>')
 
 def poll_dbb(rid):
     empty=(None,None,pd.DataFrame(),None)
@@ -193,15 +218,20 @@ def build():
                     with gr.Column(scale=2,elem_classes='panel'):
                         rid=gr.State('')
                         info=gr.Markdown('Chưa chạy. Kết quả chỉ hiển thị khi có dữ liệu thực.')
+                        progress_html=gr.HTML(progress_panel(''))
+                        progress_timer=gr.Timer(value=2.0)
                         with gr.Row():
                             chart1=gr.Image(label='DBB S ≥ 20 theo nhóm',type='filepath',interactive=False)
                             chart2=gr.Image(label='Chỉ số thăm dò',type='filepath',interactive=False)
                         table1=gr.Dataframe(label='Kết quả theo model và nhóm',interactive=False)
                         file1=gr.File(label='Tải báo cáo ZIP (CSV + PNG + phương pháp)')
                         gr.Markdown('**N/A ≠ 0.** True Social Bias không được coi là một chỉ số DBB chính thức.')
-                start.click(start_dbb,[m1,n1,cat,rid],[rid,info]).then(poll_dbb,rid,[info,chart1,chart2,table1,file1])
+                start.click(start_dbb,[m1,n1,cat,rid],[rid,info]).then(
+                    progress_panel,rid,progress_html).then(
+                    poll_dbb,rid,[info,chart1,chart2,table1,file1])
+                progress_timer.tick(progress_panel,inputs=rid,outputs=progress_html,show_progress='hidden')
                 stop.click(stop_dbb,rid,info)
-                refresh.click(poll_dbb,rid,[info,chart1,chart2,table1,file1])
+                refresh.click(poll_dbb,rid,[info,chart1,chart2,table1,file1]).then(progress_panel,rid,progress_html)
             with gr.Tab('▦ Four benchmarks'):
                 gr.Markdown('## 02 / Benchmark comparison\nDBB · BBQ · CrowS-Pairs · StereoSet. Chỉ số khác định nghĩa, không xếp hạng trực tiếp.')
                 with gr.Row():
