@@ -1,4 +1,4 @@
-"""Spawned subprocess for Streamlit Experiment 1; cooperative stop and atomic progress.
+"""Spawned subprocess for Gradio Experiment 1; cooperative stop and atomic progress.
 
 Start only with a freshly created run ID; no replay or resume of old runs.
 All outputs stay under Results/explainable/experiment1/<run-id>/.

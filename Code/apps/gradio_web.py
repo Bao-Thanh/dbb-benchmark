@@ -67,13 +67,13 @@ def start_dbb(models,count,category,previous):
             df=load_dbb()
             pairs=audited_pairs(df)
             chosen=sample_disjoint_pairs(pairs,count,category,42)
-            cfg={'workflow':'gradio_compact_v1','models':models,'pair_ids':chosen.pair_id.tolist(),'question_count':count,'group':category,'seed':42,'repeats':10,'settings':Settings(temperature=.8,top_p=1.,seed=42,num_predict=96,num_ctx=2048,timeout=120).metadata(),'dataset_sha256':file_sha256(DATASET/'Bias-Dataset.csv'),'audited_sha256':DBB_SHA256,'method':METHOD_NOTE,'expected_calls_without_retries':count*len(models)*10}
+            cfg={'workflow':'compact_multi_v1','models':models,'pair_ids':chosen.pair_id.tolist(),'question_count':count,'group':category,'seed':42,'repeats':10,'settings':Settings(temperature=.8,top_p=1.,seed=42,num_predict=96,num_ctx=2048,timeout=120).metadata(),'dataset_sha256':file_sha256(DATASET/'Bias-Dataset.csv'),'audited_sha256':DBB_SHA256,'method':METHOD_NOTE,'expected_calls_without_retries':count*len(models)*10}
             rid=create_run('experiment1',cfg)
             folder=folder_for('experiment1',rid)
             worker=ROOT/'Code'/'workers'/'dbb_compact_worker.py'
             with (folder/'worker.log').open('a',encoding='utf-8') as log:
                 PROCS[rid]=subprocess.Popen([sys.executable,'-u',str(worker),'--run-id',rid],cwd=str(ROOT),stdin=subprocess.DEVNULL,stdout=log,stderr=subprocess.STDOUT)
-            return rid,'✓ Đã khởi chạy '+rid+' · Nhấn Làm mới tiến độ để theo dõi.'
+            return rid,'✓ Đã khởi chạy '+rid+' · Tiến độ sẽ tự cập nhật mỗi 2 giây.'
         except Exception as e: raise gr.Error('Không thể bắt đầu: '+str(e))
 
 def stop_dbb(rid):
@@ -101,6 +101,12 @@ def progress_panel(rid):
     valid=int(state.get('valid') or 0)
     invalid=int(state.get('invalid') or 0)
     hint='Kết quả đã sẵn sàng. Nhấn Cập nhật tiến độ để tải báo cáo.' if phase=='completed' else 'Tự động cập nhật mỗi 2 giây · số lượt xử lý thực tế'
+    error=escape(str(state.get('error') or '')[:600]) if phase=='failed' else ''
+    if phase=='failed' and not error:
+        logfile=folder_for('experiment1',rid)/'worker.log'
+        if logfile.exists():
+            error=escape(logfile.read_text(encoding='utf-8',errors='replace')[-1600:])
+    if error: hint='Lỗi worker: '+error
     return (f'<div class="live-progress"><div class="progress-head"><span>◉ {label}</span>'
             f'<strong>{pct:.1f}%</strong></div><div class="progress-track">'
             f'<div class="progress-fill" style="width:{pct:.2f}%;background:{color}"></div></div>'
@@ -117,7 +123,11 @@ def poll_dbb(rid):
     if state in ('running','initializing') and proc and proc.poll() not in (None,0):state='failed'
     done,total=int(status.get('done') or 0),int(status.get('total') or 0)
     msg='**Run:** '+rid+' · **Trạng thái:** '+state+' · **Model:** '+str(status.get('model') or '—')+' · **Tiến độ:** '+str(done)+'/'+str(total)+' · **Hợp lệ:** '+str(status.get('valid',0))
-    if status.get('error'):msg+='\n\n⚠ '+str(status['error'])[:400]
+    if status.get('error'):msg+='\n\n⚠ '+str(status['error'])[:700]
+    if state=='failed':
+        logfile=folder_for('experiment1',rid)/'worker.log'
+        if logfile.exists():
+            msg+='\n\n**Worker log (cuối file):**\n```text\n'+logfile.read_text(encoding='utf-8',errors='replace')[-2500:]+'\n```'
     if state not in ('completed','stopped','failed'):return (msg,)+empty
     try:
         manifest,attempts=load_run('experiment1',rid)
