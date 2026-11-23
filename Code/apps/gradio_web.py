@@ -116,31 +116,56 @@ def progress_panel(rid):
             f'<div class="progress-model">Model: {model}</div><small>{hint}</small></div>')
 
 def poll_dbb(rid):
-    empty=(None,None,pd.DataFrame(),None)
-    if not rid:return ('Chưa có run. Chọn model và bắt đầu.',)+empty
+    """Refresh result panels automatically when a worker reaches a terminal state.
+
+    Progress polling must not clear charts or recompute the same expensive
+    report every two seconds. Reports are cached on disk for each completed run.
+    """
+    no_change=(gr.update(),gr.update(),gr.update(),gr.update())
+    if not rid:
+        return ('Chưa có run. Chọn model và bắt đầu.',)+no_change
     status=read_status(rid)
     state=status.get('state','initializing')
     proc=PROCS.get(rid)
-    if state in ('running','initializing') and proc and proc.poll() not in (None,0):state='failed'
+    if state in ('running','initializing') and proc and proc.poll() not in (None,0):
+        state='failed'
     done,total=int(status.get('done') or 0),int(status.get('total') or 0)
     msg='**Run:** '+rid+' · **Trạng thái:** '+state+' · **Model:** '+str(status.get('model') or '—')+' · **Tiến độ:** '+str(done)+'/'+str(total)+' · **Hợp lệ:** '+str(status.get('valid',0))
-    if status.get('error'):msg+='\n\n⚠ '+str(status['error'])[:700]
+    if status.get('error'):
+        msg+='\\n\\n⚠ '+str(status['error'])[:700]
     if state=='failed':
         logfile=folder_for('experiment1',rid)/'worker.log'
         if logfile.exists():
-            msg+='\n\n**Worker log (cuối file):**\n```text\n'+logfile.read_text(encoding='utf-8',errors='replace')[-2500:]+'\n```'
-    if state not in ('completed','stopped','failed'):return (msg,)+empty
+            msg+='\\n\\n**Worker log (cuối file):**\\n```text\\n'+logfile.read_text(encoding='utf-8',errors='replace')[-2500:]+'\\n```'
+    if state not in ('completed','stopped','failed'):
+        return (msg+' · Đang chờ worker hoàn tất; biểu đồ sẽ tự xuất hiện.',)+no_change
+    folder=OUT/rid
+    chart_a=folder/'categories.png'
+    chart_b=folder/'diagnostics.png'
+    table=folder/'summary.csv'
+    archive=folder/'report.zip'
     try:
-        manifest,attempts=load_run('experiment1',rid)
-        cfg=manifest['config']
-        if file_sha256(DATASET/'Bias-Dataset.csv')!=cfg['dataset_sha256']:raise ValueError('Dataset thay đổi sau khi chạy.')
-        if not attempts:return (msg+' · Không có phản hồi thực.',)+empty
-        pairs=audited_pairs(load_dbb())
-        pairs=pairs.loc[pairs.pair_id.isin(cfg['pair_ids'])]
-        files=report_files(pairs,attempts,cfg['models'],rid,state=='completed',manifest)
-        summary=pd.read_csv(io.BytesIO(files['tong_hop.csv']))
-        return msg,export(rid,'categories.png',files['bieu_do_nhom.png']),export(rid,'diagnostics.png',files['bieu_do_chi_so.png']),summary,export(rid,'report.zip',zip_files(files))
-    except Exception as e:return (msg+'\n\n⚠ Xuất báo cáo thất bại: '+str(e),)+empty
+        # Generate once per finished run; later timer ticks only load saved paths.
+        if not all(p.is_file() and p.stat().st_size for p in (chart_a,chart_b,table,archive)):
+            manifest,attempts=load_run('experiment1',rid)
+            cfg=manifest['config']
+            if file_sha256(DATASET/'Bias-Dataset.csv')!=cfg['dataset_sha256']:
+                raise ValueError('Dataset thay đổi sau khi chạy.')
+            if not attempts:
+                return (msg+' · Không có phản hồi thực để vẽ biểu đồ.',)+no_change
+            pairs=audited_pairs(load_dbb())
+            pairs=pairs.loc[pairs.pair_id.isin(cfg['pair_ids'])]
+            files=report_files(pairs,attempts,cfg['models'],rid,state=='completed',manifest)
+            export(rid,'categories.png',files['bieu_do_nhom.png'])
+            export(rid,'diagnostics.png',files['bieu_do_chi_so.png'])
+            export(rid,'summary.csv',files['tong_hop.csv'])
+            export(rid,'report.zip',zip_files(files))
+        summary=pd.read_csv(table)
+        return (msg+'\\n\\n✓ Đã tạo biểu đồ và báo cáo tự động.',
+                str(chart_a),str(chart_b),summary,str(archive))
+    except Exception as e:
+        return (msg+'\\n\\n⚠ **Lỗi tạo biểu đồ/báo cáo:** '+str(e),)+no_change
+
 
 def make_tasks(name,count,cfg):
     filename,loader,builder=BENCH[name]
@@ -247,6 +272,7 @@ def build():
                     progress_panel,rid,progress_html).then(
                     poll_dbb,rid,[info,chart1,chart2,table1,file1])
                 progress_timer.tick(progress_panel,inputs=rid,outputs=progress_html,show_progress='hidden')
+                progress_timer.tick(poll_dbb,inputs=rid,outputs=[info,chart1,chart2,table1,file1],show_progress='hidden',concurrency_limit=1)
                 stop.click(stop_dbb,rid,info)
                 refresh.click(poll_dbb,rid,[info,chart1,chart2,table1,file1]).then(progress_panel,rid,progress_html)
             with gr.Tab('▦ Four benchmarks'):
