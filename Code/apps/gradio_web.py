@@ -183,6 +183,81 @@ def comparison_progress(done, total, model='', benchmark='', state='running'):
             f'<span>{current}</span></div><small>Tiến độ theo số task đã xử lý, không phải số lần retry API.</small></div>')
 
 
+def comparison_charts(summary, kind):
+    """Separate heterogeneous metrics and show validity alongside them."""
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    import numpy as np
+    if summary is None or summary.empty:
+        return None, None
+    df=summary.copy()
+    for col in ('Giá trị (%)','Tỷ lệ hợp lệ (%)'):
+        df[col]=pd.to_numeric(df[col],errors='coerce')
+    models=list(dict.fromkeys(df['Model'].dropna().astype(str)))
+    benchmarks=list(dict.fromkeys(df['Benchmark'].dropna().astype(str)))
+    if not models or not benchmarks:
+        return None, None
+    folder=OUT/('charts-'+__import__('uuid').uuid4().hex[:12])
+    folder.mkdir(parents=True,exist_ok=True)
+    main_path=folder/'metrics.png'
+    valid_path=folder/'validity.png'
+    colors=['#7468ef','#2aafaa','#e9a34b','#d36f9a']
+    if kind=='experiment3':
+        fig,axes=plt.subplots(1,2,figsize=(12,4.5),dpi=140,sharey=True)
+        for ax,benchmark,color in zip(axes,['DBB','BBQ'],colors):
+            subset=df[df['Benchmark']==benchmark].set_index('Model')
+            values=[subset.loc[m,'Giá trị (%)'] if m in subset.index else float('nan') for m in models]
+            bars=ax.bar(range(len(models)),values,color=color,width=.65)
+            ax.set_title(('DBB · tỷ lệ chọn ans1' if benchmark=='DBB' else 'BBQ · Accuracy'),fontweight='bold')
+            ax.set_xticks(range(len(models)),models,rotation=30,ha='right')
+            ax.set_ylim(0,110)
+            ax.grid(axis='y',alpha=.14)
+            ax.set_axisbelow(True)
+            for bar,v in zip(bars,values):
+                if pd.notna(v):ax.text(bar.get_x()+bar.get_width()/2,v+2,f'{v:.1f}%',ha='center',fontsize=8)
+        axes[0].set_ylabel('Giá trị (%)')
+        fig.suptitle('Chỉ so sánh model TRONG cùng benchmark',fontweight='bold')
+    else:
+        fig,ax=plt.subplots(figsize=(max(9,2.2*len(models)+3),5),dpi=140)
+        x=np.arange(len(models))
+        width=.78/max(1,len(benchmarks))
+        for j,benchmark in enumerate(benchmarks):
+            subset=df[df['Benchmark']==benchmark].set_index('Model')
+            values=[subset.loc[m,'Giá trị (%)'] if m in subset.index else float('nan') for m in models]
+            ax.bar(x-.39+(j+.5)*width,values,width,label=benchmark,color=colors[j%len(colors)])
+        ax.set_xticks(x,models,rotation=25,ha='right')
+        ax.set_ylim(0,105)
+        ax.set_ylabel('Giá trị (%) · các định nghĩa khác nhau')
+        ax.set_title('Chỉ số mô tả theo benchmark (KHÔNG xếp hạng chung)',fontweight='bold')
+        ax.legend(ncol=min(4,len(benchmarks)),fontsize=9)
+        ax.grid(axis='y',alpha=.14)
+        ax.set_axisbelow(True)
+    fig.tight_layout()
+    fig.savefig(main_path,bbox_inches='tight',facecolor='white')
+    plt.close(fig)
+    fig,ax=plt.subplots(figsize=(max(9,2.2*len(models)+3),4.7),dpi=140)
+    x=np.arange(len(models))
+    width=.78/max(1,len(benchmarks))
+    for j,benchmark in enumerate(benchmarks):
+        subset=df[df['Benchmark']==benchmark].set_index('Model')
+        values=[subset.loc[m,'Tỷ lệ hợp lệ (%)'] if m in subset.index else float('nan') for m in models]
+        bars=ax.bar(x-.39+(j+.5)*width,values,width,label=benchmark,color=colors[j%len(colors)])
+        for bar,v in zip(bars,values):
+            if pd.notna(v):ax.text(bar.get_x()+bar.get_width()/2,v+1,f'{v:.0f}%',ha='center',fontsize=8)
+    ax.set_xticks(x,models,rotation=25,ha='right')
+    ax.set_ylim(0,112)
+    ax.set_ylabel('Phản hồi hợp lệ (%)')
+    ax.set_title('Tỷ lệ phản hồi hợp lệ · cùng định nghĩa ở mọi benchmark',fontweight='bold')
+    ax.legend(ncol=min(4,len(benchmarks)),fontsize=9)
+    ax.grid(axis='y',alpha=.14)
+    ax.set_axisbelow(True)
+    fig.tight_layout()
+    fig.savefig(valid_path,bbox_inches='tight',facecolor='white')
+    plt.close(fig)
+    return str(main_path),str(valid_path)
+
+
 def compare_four(models, benchmarks, count):
     yield from compare(models, benchmarks, count, 'experiment2')
 
@@ -212,10 +287,10 @@ def compare(models,benches,count,kind):
     records=[]
     errors=[]
     ids=[]
-    yield comparison_progress(0,total,state='initializing'), 'Đang chuẩn bị thực nghiệm…', pd.DataFrame(), None
+    yield comparison_progress(0,total,state='initializing'), 'Đang chuẩn bị thực nghiệm…', pd.DataFrame(), None, None, None
     for model in models:
         for benchmark in benches:
-            yield comparison_progress(done,total,model,benchmark), f'**Đang chuẩn bị:** {model} · {benchmark}', gr.update(), gr.update()
+            yield comparison_progress(done,total,model,benchmark), f'**Đang chuẩn bị:** {model} · {benchmark}', gr.update(), gr.update(), gr.update(), gr.update()
             try:
                 cfg={'model':model,'settings':Settings(temperature=0.,seed=42,num_predict=96,timeout=120).metadata(),
                      'repeats':1,'workflow':'gradio_comparison_v1','metric_scope':'exploratory_only',
@@ -240,7 +315,7 @@ def compare(models,benches,count,kind):
                         done+=max(0,current-previous)
                         previous=current
                         yield comparison_progress(done,total,model,benchmark), (
-                            f'**Đang chạy:** {model} · {benchmark} · {current}/{len(tasks)} câu hỏi'),gr.update(),gr.update()
+                            f'**Đang chạy:** {model} · {benchmark} · {current}/{len(tasks)} câu hỏi'),gr.update(),gr.update(),gr.update(),gr.update()
                     elif event=='error':
                         raise RuntimeError(value)
                     else:
@@ -252,9 +327,9 @@ def compare(models,benches,count,kind):
                 # An unsuccessful batch still occupies a planned segment.
                 # Never mark unprocessed tasks as completed.
             yield comparison_progress(done,total,model,benchmark), (
-                f'**Đã xử lý:** {done}/{total} task · {model} / {benchmark}'),gr.update(),gr.update()
+                f'**Đã xử lý:** {done}/{total} task · {model} / {benchmark}'),gr.update(),gr.update(),gr.update(),gr.update()
     if not records:
-        yield comparison_progress(done,total,state='failed'), '⚠ Không có phản hồi thực. '+'; '.join(errors),pd.DataFrame(),None
+        yield comparison_progress(done,total,state='failed'), '⚠ Không có phản hồi thực. '+'; '.join(errors),pd.DataFrame(),None,None,None
         return
     groups=[]
     for model,group in pd.DataFrame(records).groupby('model'):
@@ -274,7 +349,8 @@ def compare(models,benches,count,kind):
     note='✓ '+str(len(records))+' phản hồi được ghi · '+str(len(ids))+' audit runs. Các chỉ số không so sánh trực tiếp.'
     if errors:
         note+='\\n\\n⚠ '+'; '.join(errors[:6])
-    yield comparison_progress(done,total,state='completed' if not errors else 'failed'), note,summary,export('compare-'+ids[0],'comparison.zip',buffer.getvalue())
+    metric_chart,valid_chart=comparison_charts(summary,kind)
+    yield comparison_progress(done,total,state='completed' if not errors else 'failed'), note,summary,export('compare-'+ids[0],'comparison.zip',buffer.getvalue()),metric_chart,valid_chart
 
 
 def chat(message,history,model,temperature):
@@ -348,9 +424,13 @@ def build():
                     with gr.Column(scale=2,elem_classes='panel'):
                         progress2=gr.HTML(comparison_progress(0,0,state='initializing'))
                         info2=gr.Markdown('Chưa có kết quả.')
+                        with gr.Row():
+                            chart2=gr.Image(label='Biểu đồ chỉ số theo benchmark',interactive=False)
+                            valid2=gr.Image(label='Tỷ lệ phản hồi hợp lệ',interactive=False)
+                        gr.Markdown('**Lưu ý:** Các chỉ số DBB, BBQ, CrowS-Pairs, StereoSet khác định nghĩa; không dùng biểu đồ để xếp hạng thiên kiến chung.')
                         table2=gr.Dataframe(label='Chỉ số mô tả',interactive=False)
                         file2=gr.File(label='Tải CSV + audit ZIP')
-                go2.click(compare_four,[m2,bs,n2],[progress2,info2,table2,file2],show_progress='hidden')
+                go2.click(compare_four,[m2,bs,n2],[progress2,info2,table2,file2,chart2,valid2],show_progress='hidden')
             with gr.Tab('◫ DBB vs BBQ'):
                 gr.Markdown('## 03 / DBB vs BBQ\nCùng model, hai tập câu hỏi khác nhau. Không suy luận chúng là các cặp tương đương.')
                 with gr.Row():
@@ -361,9 +441,13 @@ def build():
                     with gr.Column(scale=2,elem_classes='panel'):
                         progress3=gr.HTML(comparison_progress(0,0,state='initializing'))
                         info3=gr.Markdown('Chưa có kết quả.')
+                        with gr.Row():
+                            chart3=gr.Image(label='DBB và BBQ · hai thang đo riêng',interactive=False)
+                            valid3=gr.Image(label='Tỷ lệ phản hồi hợp lệ',interactive=False)
+                        gr.Markdown('**Lưu ý:** DBB là tỷ lệ chọn ans1 mô tả, không phải bias score S; BBQ ở đây là accuracy, không phải BBQ bias score.')
                         table3=gr.Dataframe(label='Bảng kết quả',interactive=False)
                         file3=gr.File(label='Tải báo cáo ZIP')
-                go3.click(compare_dbb_bbq,[m3,n3],[progress3,info3,table3,file3],show_progress='hidden')
+                go3.click(compare_dbb_bbq,[m3,n3],[progress3,info3,table3,file3,chart3,valid3],show_progress='hidden')
             with gr.Tab('◇ AI Bias Lab'):
                 gr.Markdown('## 04 / A/B Choice Lab\nChạy cùng một tình huống nhiều lượt và thống kê model chọn **phương án gốc A hay B**. Có thể đảo vị trí hiển thị để giảm nhiễu do thứ tự.')
                 with gr.Row():
