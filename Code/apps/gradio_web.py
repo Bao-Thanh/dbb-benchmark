@@ -175,7 +175,7 @@ def comparison_progress(done, total, model='', benchmark='', state='running'):
     pct=min(100.0,100.0*done/total) if total else 0.0
     label={'running':'Đang chạy','completed':'Hoàn thành','failed':'Có lỗi'}.get(state,'Đang chuẩn bị')
     color='#16a085' if state=='completed' else '#e9a23b' if state=='failed' else '#7667ee'
-    current=(escape(model)+' · '+escape(benchmark)) if model else 'Đang chuẩn bị'
+    current=(escape(model)+' · '+escape(benchmark)) if model else ('Đã xử lý xong' if state=='completed' else 'Có lỗi khi chạy' if state=='failed' else 'Đang chuẩn bị')
     return (f'<div class="live-progress"><div class="progress-head"><span>◉ {label}</span>'
             f'<strong>{pct:.1f}%</strong></div><div class="progress-track">'
             f'<div class="progress-fill" style="width:{pct:.2f}%;background:{color}"></div></div>'
@@ -282,52 +282,59 @@ def compare(models,benches,count,kind):
         raise gr.Error('Chọn model và benchmark.')
     if not 1<=count<=500:
         raise gr.Error('Số mẫu phải từ 1 đến 500.')
-    total=len(models)*len(benches)*count
-    done=0
-    records=[]
+    # Build tasks before starting so the denominator matches actual tasks.
+    # Some datasets expand one sample into multiple evaluation prompts.
+    batches=[]
     errors=[]
-    ids=[]
-    yield comparison_progress(0,total,state='initializing'), 'Đang chuẩn bị thực nghiệm…', pd.DataFrame(), None, None, None
     for model in models:
         for benchmark in benches:
-            yield comparison_progress(done,total,model,benchmark), f'**Đang chuẩn bị:** {model} · {benchmark}', gr.update(), gr.update(), gr.update(), gr.update()
             try:
                 cfg={'model':model,'settings':Settings(temperature=0.,seed=42,num_predict=96,timeout=120).metadata(),
                      'repeats':1,'workflow':'gradio_comparison_v1','metric_scope':'exploratory_only',
                      'benchmarks':benches,'dataset_hashes':{benchmark:file_sha256(DATASET/BENCH[benchmark][0])}}
                 tasks=make_tasks(benchmark,count,cfg)
-                rid=create_run(kind,cfg)
-                ids.append(rid)
-                events=queue.Queue()
-                def work():
-                    try:
-                        evaluate(kind,rid,tasks,progress=lambda n,t:events.put(('progress',n,t)))
-                        events.put(('finished',None,None))
-                    except Exception as exc:
-                        events.put(('error',str(exc),None))
-                thread=threading.Thread(target=work,daemon=True)
-                thread.start()
-                previous=0
-                while True:
-                    event,value,n=events.get()
-                    if event=='progress':
-                        current=min(len(tasks),int(value))
-                        done+=max(0,current-previous)
-                        previous=current
-                        yield comparison_progress(done,total,model,benchmark), (
-                            f'**Đang chạy:** {model} · {benchmark} · {current}/{len(tasks)} câu hỏi'),gr.update(),gr.update(),gr.update(),gr.update()
-                    elif event=='error':
-                        raise RuntimeError(value)
-                    else:
-                        done+=max(0,len(tasks)-previous)
-                        break
-                records.extend(load_run(kind,rid)[1])
+                batches.append((model,benchmark,cfg,tasks))
             except Exception as exc:
                 errors.append(model+' / '+benchmark+': '+str(exc))
-                # An unsuccessful batch still occupies a planned segment.
-                # Never mark unprocessed tasks as completed.
-            yield comparison_progress(done,total,model,benchmark), (
-                f'**Đã xử lý:** {done}/{total} task · {model} / {benchmark}'),gr.update(),gr.update(),gr.update(),gr.update()
+    total=sum(len(tasks) for _,_,_,tasks in batches)
+    done=0
+    records=[]
+    ids=[]
+    yield comparison_progress(0,total,state='initializing'), (
+        f'Đã chuẩn bị {total} task thực tế cho {len(batches)} cặp model-benchmark.'), pd.DataFrame(), None, None, None
+    for model,benchmark,cfg,tasks in batches:
+        yield comparison_progress(done,total,model,benchmark), f'**Đang chuẩn bị:** {model} · {benchmark}', gr.update(), gr.update(), gr.update(), gr.update()
+        try:
+            rid=create_run(kind,cfg)
+            ids.append(rid)
+            events=queue.Queue()
+            def work():
+                try:
+                    evaluate(kind,rid,tasks,progress=lambda n,t:events.put(('progress',n,t)))
+                    events.put(('finished',None,None))
+                except Exception as exc:
+                    events.put(('error',str(exc),None))
+            thread=threading.Thread(target=work,daemon=True)
+            thread.start()
+            previous=0
+            while True:
+                event,value,n=events.get()
+                if event=='progress':
+                    current=min(len(tasks),int(value))
+                    done+=max(0,current-previous)
+                    previous=current
+                    yield comparison_progress(done,total,model,benchmark), (
+                        f'**Đang chạy:** {model} · {benchmark} · {current}/{len(tasks)} câu hỏi'),gr.update(),gr.update(),gr.update()
+                elif event=='error':
+                    raise RuntimeError(value)
+                else:
+                    done+=max(0,len(tasks)-previous)
+                    break
+            records.extend(load_run(kind,rid)[1])
+        except Exception as exc:
+            errors.append(model+' / '+benchmark+': '+str(exc))
+        yield comparison_progress(done,total,model,benchmark), (
+            f'**Đã xử lý:** {done}/{total} task · {model} / {benchmark}'),gr.update(),gr.update(),gr.update()
     if not records:
         yield comparison_progress(done,total,state='failed'), '⚠ Không có phản hồi thực. '+'; '.join(errors),pd.DataFrame(),None,None,None
         return
