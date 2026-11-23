@@ -22,14 +22,17 @@ def chart(path: Path, counts: dict[str,int], total: int):
                   [counts["A"], counts["B"], counts["INVALID"]],
                   color=["#7468ef", "#2aafaa", "#e9a34b"], width=.56)
     ax.set_ylim(0, max(1, max(counts.values()) * 1.3))
+    valid = counts["A"] + counts["B"]
     ax.set_ylabel("Số lượt chọn")
     ax.set_title("Kết quả lựa chọn A/B · " + str(total) + " lượt", weight="bold", pad=20)
     ax.spines[["top", "right"]].set_visible(False)
     ax.grid(axis="y", alpha=.12)
     ax.set_axisbelow(True)
     for bar in bars:
+        value = int(bar.get_height())
+        pct = f" ({value / valid * 100:.1f}%)" if valid and bar != bars[-1] else ""
         ax.text(bar.get_x() + bar.get_width()/2, bar.get_height()+.06,
-                str(int(bar.get_height())), ha="center", va="bottom", weight="bold")
+                str(value) + pct, ha="center", va="bottom", weight="bold")
     fig.tight_layout()
     fig.savefig(path, bbox_inches="tight")
     plt.close(fig)
