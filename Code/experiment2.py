@@ -1,14 +1,8 @@
-"""Experiment 2: compact multi-benchmark reports; no run management UI."""
-import streamlit as st
-from dbb_simple_report_ui import render_compact
-
-def render():
-    st.caption('Giao diện báo cáo mới · Không cần tạo run hoặc chọn run cũ')
-    render_compact('experiment2', ['DBB', 'BBQ', 'CrowS-Pairs', 'StereoSet'],
-                   'Thực nghiệm 2 · So sánh bốn benchmark',
-                   'Chọn model, số mẫu, benchmark → chạy → xem biểu đồ và tải báo cáo. '
-                   'Mỗi benchmark có định nghĩa chỉ số khác nhau.')
-
-if __name__ == '__main__':
-    st.set_page_config(page_title='DBB · Thực nghiệm 2', layout='wide')
-    render()
+"""Compatibility entrypoint for apps.experiment2; canonical implementation is in Code/apps/."""
+import importlib as _importlib
+import runpy as _runpy
+import sys as _sys
+if __name__ == "__main__":
+    _runpy.run_module("apps.experiment2", run_name="__main__")
+else:
+    _sys.modules[__name__] = _importlib.import_module("apps.experiment2")
