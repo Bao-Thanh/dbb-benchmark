@@ -47,7 +47,7 @@ def export(rid,name,data):
 def model_options():
     models=models_available()
     info='✓ Ollama · '+str(len(models))+' model khả dụng' if models else '⚠ Ollama chưa kết nối; chạy ollama serve và tải model trước.'
-    return (gr.update(choices=models,value=models[:1]),gr.update(choices=models,value=models[:1]),gr.update(choices=models,value=models[:1]),gr.update(choices=models,value=models[0] if models else None),info)
+    return (gr.update(choices=models,value=models[:1]),gr.update(choices=models,value=models[:1]),gr.update(choices=models,value=models[:1]),gr.update(choices=models,value=models[0] if models else None),gr.update(choices=models,value=models[0] if models else None),info)
 
 def dataset_info():
     p=DATASET/'Bias-Dataset.csv'
@@ -564,7 +564,9 @@ def build():
                         ab_file=gr.File(label='Tải CSV kết quả')
                 go4.click(run_ab,[mc,scenario,opt_a,opt_b,repeats,temp,swap],
                           [ab_info,ab_chart,ab_table,ab_file],show_progress='hidden')
-                gr.Markdown('## Counterfactual Gender DBB · cặp gốc từ dataset\\nChạy xen kẽ hai giới tính, cùng seed và cùng thứ tự đáp án. Không ép hướng chênh lệch.')
+                gr.Markdown('## Đánh giá thiên kiến giới tính (Counterfactual DBB)\nSo sánh phản hồi của mô hình trên hai tình huống đối chứng từ bộ dữ liệu DBB. Các lượt tương ứng sử dụng cùng seed và thứ tự đáp án; điểm S đo mức chênh lệch tỷ lệ lựa chọn giữa hai giới tính.')
+                gender_model=gr.Dropdown(label='Mô hình Ollama đánh giá',choices=[])
+                gender_temp=gr.Slider(0,1,value=.8,step=.05,label='Temperature (Gender DBB)')
                 gender_row=gr.Dropdown(choices=[('Chăm sóc trẻ / giáo viên mầm non · 1160',1160),('Khả năng toán học · 1010',1010),('Năng lực phỏng vấn kỹ thuật · 1110',1110),('Gia đình và học tập · 1260',1260),('Năng lực toán học (mẫu khác) · 1710',1710),('Vai trò trong hôn nhân · 4510',4510)],value=1160,allow_custom_value=True,label='Chọn cặp câu hỏi demo từ dataset (hoặc nhập Row ID)',filterable=True)
                 gender_preview_btn=gr.Button('Xem cặp gốc')
                 gender_preview=gr.Dataframe(interactive=False,label='Hai tình huống và đáp án gốc')
@@ -577,10 +579,10 @@ def build():
                 gender_chart=gr.Image(type='filepath',interactive=False,label='So sánh Male / Female')
                 gender_table=gr.Dataframe(interactive=False)
                 gender_csv=gr.File(label='Tải CSV chung')
-                gender_go.click(run_gender,[mc,gender_row,gender_n,temp],[gender_progress,gender_note,gender_chart,gender_table,gender_csv],show_progress='hidden')
+                gender_go.click(run_gender,[gender_model,gender_row,gender_n,gender_temp],[gender_progress,gender_note,gender_chart,gender_table,gender_csv],show_progress='hidden')
         reload=gr.Button('↻ Kết nối / làm mới danh sách model Ollama')
-        reload.click(model_options,outputs=[m1,m2,m3,mc,conn])
-        demo.load(model_options,outputs=[m1,m2,m3,mc,conn])
+        reload.click(model_options,outputs=[m1,m2,m3,mc,gender_model,conn])
+        demo.load(model_options,outputs=[m1,m2,m3,mc,gender_model,conn])
         gr.HTML('<div class="footer">DBB RESEARCH STUDIO · Pan et al., Findings EMNLP 2025 · Ollama local · No fabricated results · Experimental indicators are not evidence of discrimination.</div>')
     return demo
 
