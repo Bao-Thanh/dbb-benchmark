@@ -260,17 +260,35 @@ def comparison_charts(summary, kind):
     return str(main_path),str(valid_path)
 
 
+def demo_pair_choices(category):
+    df=load_dbb()
+    pairs=audited_pairs(df)
+    subset=pairs[pairs.bias_type==category]
+    # One pair per concept where possible; deterministic, not selected by score.
+    subset=subset.sort_values('pair_id').drop_duplicates('concept_id')
+    subset=subset.sample(n=min(150,len(subset)),random_state=42)
+    if category=='gender':
+        featured=pairs[(pairs.bias_type=='gender') & pairs.row_id_1.isin([1160,1010,1110,1260,1710,4510])]
+        subset=pd.concat([featured,subset[~subset.concept_id.isin(featured.concept_id)]]).head(150)
+    contexts=df.set_index('row_id')['Context']
+    choices=[]
+    for p in subset.itertuples():
+        context=' '.join(str(contexts.loc[p.row_id_1]).split())
+        choices.append((f'{p.row_id_1}–{p.row_id_2} | {p.target_1} / {p.target_2} | {context[:110]}',p.pair_id))
+    return gr.update(choices=choices,value=choices[0][1] if choices else None)
+
 def gender_pair_preview(row_id):
     df=load_dbb()
     pairs=audited_pairs(df)
-    p=pairs[(pairs.bias_type=='gender') & ((pairs.row_id_1==int(row_id)) | (pairs.row_id_2==int(row_id)))]
+    p=pairs[pairs.pair_id==str(row_id)]
     if len(p)!=1:
-        raise gr.Error('Nhập row_id thuộc cặp gender đã audit.')
+        raise gr.Error('Chọn một cặp đối chứng đã audit.')
     pair=p.iloc[0]
     rows=df.set_index('row_id').loc[[int(pair.row_id_1),int(pair.row_id_2)]]
     return pair,rows
 
 def preview_gender(row_id):
+    if not row_id: return pd.DataFrame()
     pair,rows=gender_pair_preview(row_id)
     return rows[['target','Context','ans1','ans2','explanation']].reset_index()
 
@@ -281,7 +299,7 @@ def run_gender(model,row_id,repeats,temp):
     from uuid import uuid4
     if not model: raise gr.Error('Chọn model.')
     repeats=int(repeats)
-    if repeats<10 or repeats%2: raise gr.Error('Chọn số lượt chẵn, ít nhất 10 mỗi giới.')
+    if repeats<10 or repeats%2: raise gr.Error('Chọn số lượt chẵn, ít nhất 10 mỗi nhóm.')
     pair,rows=gender_pair_preview(row_id)
     records=[]
     rid='gender-'+uuid4().hex[:12]
@@ -298,11 +316,11 @@ def run_gender(model,row_id,repeats,temp):
             letter,reason=parse_choice(response.get('raw',''),'AB')
             valid=letter in ('A','B') and not response.get('error')
             original=('ans1' if (letter=='A')!=swap else 'ans2') if valid else ''
-            records.append(dict(model=model,pair_id=pair.pair_id,row_id=int(row_id),target=row.target,trial=i+1,seed=42+i,swapped=swap,display_A=opts[0],display_B=opts[1],raw=response.get('raw',''),parsed_display=letter,selected_original=original,valid=bool(valid),error=response.get('error',''),parser_reason=reason,prompt=prompt))
+            records.append(dict(model=model,pair_id=pair.pair_id,bias_type=pair.bias_type,row_id=int(row_id),target=row.target,trial=i+1,seed=42+i,swapped=swap,display_A=opts[0],display_B=opts[1],raw=response.get('raw',''),parsed_display=letter,selected_original=original,valid=bool(valid),error=response.get('error',''),parser_reason=reason,prompt=prompt))
             table=pd.DataFrame(records)
             csv_path=folder/'trials.csv'
             table.to_csv(csv_path,index=False,encoding='utf-8-sig')
-            yield comparison_progress(len(records),total,model,'Gender DBB'), 'Đang chạy xen kẽ hai giới tính.',gr.update(),table,str(csv_path)
+            yield comparison_progress(len(records),total,model,'Counterfactual DBB'), 'Đang chạy xen kẽ hai nhóm đối chứng.',gr.update(),table,str(csv_path)
     stats=[]
     for target,g in table.groupby('target'):
         v=g[g.valid]
@@ -316,7 +334,7 @@ def run_gender(model,row_id,repeats,temp):
     ax.set_ylim(0,100)
     ax.set_ylabel('% phản hồi hợp lệ')
     ax.legend()
-    ax.set_title('DBB counterfactual gender pair')
+    ax.set_title('DBB counterfactual pair')
     fig.tight_layout()
     chart_path=folder/'gender.png'
     fig.savefig(chart_path)
@@ -564,19 +582,22 @@ def build():
                         ab_file=gr.File(label='Tải CSV kết quả')
                 go4.click(run_ab,[mc,scenario,opt_a,opt_b,repeats,temp,swap],
                           [ab_info,ab_chart,ab_table,ab_file],show_progress='hidden')
-                gr.Markdown('## Đánh giá thiên kiến giới tính (Counterfactual DBB)\nSo sánh phản hồi của mô hình trên hai tình huống đối chứng từ bộ dữ liệu DBB. Các lượt tương ứng sử dụng cùng seed và thứ tự đáp án; điểm S đo mức chênh lệch tỷ lệ lựa chọn giữa hai giới tính.')
+                gr.Markdown('## Đánh giá thiên kiến xã hội (Counterfactual DBB)\nSo sánh phản hồi của mô hình trên hai tình huống đối chứng từ bộ dữ liệu DBB. Các lượt tương ứng sử dụng cùng seed và thứ tự đáp án; điểm S đo mức chênh lệch tỷ lệ lựa chọn giữa hai nhóm đối chứng.')
                 gender_model=gr.Dropdown(label='Mô hình Ollama đánh giá',choices=[])
-                gender_temp=gr.Slider(0,1,value=.8,step=.05,label='Temperature (Gender DBB)')
-                gender_row=gr.Dropdown(choices=[('Chăm sóc trẻ / giáo viên mầm non · 1160',1160),('Khả năng toán học · 1010',1010),('Năng lực phỏng vấn kỹ thuật · 1110',1110),('Gia đình và học tập · 1260',1260),('Năng lực toán học (mẫu khác) · 1710',1710),('Vai trò trong hôn nhân · 4510',4510)],value=1160,allow_custom_value=True,label='Chọn cặp câu hỏi demo từ dataset (hoặc nhập Row ID)',filterable=True)
+                gender_temp=gr.Slider(0,1,value=.8,step=.05,label='Temperature (Counterfactual DBB)')
+                bias_category=gr.Dropdown(choices=[('Giới tính','gender'),('Tuổi tác','age'),('Chủng tộc / sắc tộc','race'),('Tôn giáo','religions'),('Tầng lớp kinh tế - xã hội','socioeconomic_class')],value='gender',label='Nhóm thiên kiến')
+                gender_row=gr.Dropdown(choices=[],label='Chọn cặp câu hỏi gốc (150 cặp mỗi nhóm)',filterable=True)
                 gender_preview_btn=gr.Button('Xem cặp gốc')
                 gender_preview=gr.Dataframe(interactive=False,label='Hai tình huống và đáp án gốc')
+                bias_category.change(demo_pair_choices,[bias_category],[gender_row]).then(preview_gender,[gender_row],[gender_preview])
+                demo.load(demo_pair_choices,[bias_category],[gender_row]).then(preview_gender,[gender_row],[gender_preview])
                 gender_preview_btn.click(preview_gender,[gender_row],[gender_preview])
                 gender_row.change(preview_gender,[gender_row],[gender_preview],show_progress='hidden')
-                gender_n=gr.Slider(10,200,value=50,step=2,label='Số lượt mỗi giới tính')
-                gender_go=gr.Button('▶ Chạy cả hai giới tính',variant='primary')
+                gender_n=gr.Slider(10,200,value=50,step=2,label='Số lượt mỗi nhóm')
+                gender_go=gr.Button('▶ Chạy cả hai nhóm',variant='primary')
                 gender_progress=gr.HTML()
                 gender_note=gr.Markdown()
-                gender_chart=gr.Image(type='filepath',interactive=False,label='So sánh Male / Female')
+                gender_chart=gr.Image(type='filepath',interactive=False,label='So sánh hai nhóm đối chứng')
                 gender_table=gr.Dataframe(interactive=False)
                 gender_csv=gr.File(label='Tải CSV chung')
                 gender_go.click(run_gender,[gender_model,gender_row,gender_n,gender_temp],[gender_progress,gender_note,gender_chart,gender_table,gender_csv],show_progress='hidden')
