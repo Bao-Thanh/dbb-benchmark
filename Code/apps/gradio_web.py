@@ -565,10 +565,11 @@ def build():
                 go4.click(run_ab,[mc,scenario,opt_a,opt_b,repeats,temp,swap],
                           [ab_info,ab_chart,ab_table,ab_file],show_progress='hidden')
                 gr.Markdown('## Counterfactual Gender DBB · cặp gốc từ dataset\\nChạy xen kẽ hai giới tính, cùng seed và cùng thứ tự đáp án. Không ép hướng chênh lệch.')
-                gender_row=gr.Number(value=1160,precision=0,label='Row ID của cặp gender (index từ 0)')
+                gender_row=gr.Dropdown(choices=[('Chăm sóc trẻ / giáo viên mầm non · 1160',1160),('Khả năng toán học · 1010',1010),('Năng lực phỏng vấn kỹ thuật · 1110',1110),('Gia đình và học tập · 1260',1260),('Năng lực toán học (mẫu khác) · 1710',1710),('Vai trò trong hôn nhân · 4510',4510)],value=1160,allow_custom_value=True,label='Chọn cặp câu hỏi demo từ dataset (hoặc nhập Row ID)',filterable=True)
                 gender_preview_btn=gr.Button('Xem cặp gốc')
                 gender_preview=gr.Dataframe(interactive=False,label='Hai tình huống và đáp án gốc')
                 gender_preview_btn.click(preview_gender,[gender_row],[gender_preview])
+                gender_row.change(preview_gender,[gender_row],[gender_preview],show_progress='hidden')
                 gender_n=gr.Slider(10,200,value=50,step=2,label='Số lượt mỗi giới tính')
                 gender_go=gr.Button('▶ Chạy cả hai giới tính',variant='primary')
                 gender_progress=gr.HTML()
