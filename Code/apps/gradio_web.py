@@ -205,49 +205,36 @@ def comparison_charts(summary, kind):
     main_path=folder/'metrics.png'
     valid_path=folder/'validity.png'
     colors=['#7468ef','#2aafaa','#e9a34b','#d36f9a']
-    if kind=='experiment3':
-        fig,axes=plt.subplots(1,2,figsize=(12,4.5),dpi=140,sharey=True)
-        for ax,benchmark,color in zip(axes,['DBB','BBQ'],colors):
-            subset=df[df['Benchmark']==benchmark].set_index('Model')
-            values=[subset.loc[m,'Giá trị (%)'] if m in subset.index else float('nan') for m in models]
-            bars=ax.bar(range(len(models)),values,color=color,width=.65)
-            ax.set_title(('DBB · tỷ lệ chọn ans1' if benchmark=='DBB' else 'BBQ · Accuracy'),fontweight='bold')
-            ax.set_xticks(range(len(models)),models,rotation=30,ha='right')
-            ax.set_ylim(0,110)
-            ax.grid(axis='y',alpha=.14)
-            ax.set_axisbelow(True)
-            for bar,v in zip(bars,values):
-                if pd.notna(v):ax.text(bar.get_x()+bar.get_width()/2,v+2,f'{v:.1f}%',ha='center',fontsize=8)
-        axes[0].set_ylabel('Giá trị (%)')
-        fig.suptitle('Chỉ so sánh model TRONG cùng benchmark',fontweight='bold')
-    else:
-        panels=[
-            ('DBB','Tỷ lệ cặp S ≥ 20',colors[0]),
-            ('BBQ','Accuracy (không phải bias score)',colors[1]),
-            ('CrowS-Pairs','Tỷ lệ chọn stereotype (proxy)',colors[2]),
-            ('StereoSet','Tỷ lệ chọn stereotype / 3 lựa chọn (proxy)',colors[3]),
-        ]
-        fig,axes=plt.subplots(2,2,figsize=(max(12,2.4*len(models)+4),8),dpi=140)
-        for ax,(benchmark,metric,color) in zip(axes.flat,panels):
-            subset=df[df['Benchmark']==benchmark].set_index('Model')
-            values=[subset.loc[m,'Giá trị (%)'] if m in subset.index else float('nan') for m in models]
-            bars=ax.bar(range(len(models)),values,color=color,width=.55)
-            ax.set_title(benchmark+' · '+metric,fontsize=10,fontweight='bold')
-            ax.set_xticks(range(len(models)),models,rotation=25,ha='right')
-            ax.set_ylim(0,110)
-            ax.set_ylabel('Giá trị (%)')
-            ax.grid(axis='y',alpha=.14)
-            ax.set_axisbelow(True)
-            for i,(bar,v) in enumerate(zip(bars,values)):
-                if pd.notna(v):
-                    ax.text(bar.get_x()+bar.get_width()/2,v+2,f'{v:.1f}%',ha='center',fontsize=9)
-                else:
-                    ax.text(i,5,'N/A',ha='center',fontsize=9,color='gray')
-        fig.suptitle('Thực nghiệm 2 · Chỉ so sánh model trong cùng benchmark',fontweight='bold')
-        fig.text(.5,.015,'Các chỉ số khác định nghĩa, không xếp hạng chung.',ha='center',fontsize=9)
-        fig.tight_layout(rect=(0,.04,1,.95))
-    if kind=='experiment3':
-        fig.tight_layout()
+    panels=[
+        ('DBB','Tỷ lệ cặp S ≥ 20',colors[0]),
+        ('BBQ','Accuracy (không phải bias score)',colors[1]),
+        ('CrowS-Pairs','Tỷ lệ chọn stereotype (proxy)',colors[2]),
+        ('StereoSet','Tỷ lệ chọn stereotype / 3 lựa chọn (proxy)',colors[3]),
+    ]
+    is_exp3=kind=='experiment3'
+    if is_exp3:
+        panels=panels[:2]
+    fig,axes=plt.subplots(1 if is_exp3 else 2,2,
+                         figsize=(max(12,2.4*len(models)+4),4.8 if is_exp3 else 8),dpi=140)
+    for ax,(benchmark,metric,color) in zip(axes.flat,panels):
+        subset=df[df['Benchmark']==benchmark].set_index('Model')
+        values=[subset.loc[m,'Giá trị (%)'] if m in subset.index else float('nan') for m in models]
+        bars=ax.bar(range(len(models)),values,color=color,width=.55)
+        ax.set_title(benchmark+' · '+metric,fontsize=10,fontweight='bold')
+        ax.set_xticks(range(len(models)),models,rotation=25,ha='right')
+        ax.set_ylim(0,110)
+        ax.set_ylabel('Giá trị (%)')
+        ax.grid(axis='y',alpha=.14)
+        ax.set_axisbelow(True)
+        for i,(bar,v) in enumerate(zip(bars,values)):
+            if pd.notna(v):
+                ax.text(bar.get_x()+bar.get_width()/2,v+2,f'{v:.1f}%',ha='center',fontsize=9)
+            else:
+                ax.text(i,5,'N/A',ha='center',fontsize=9,color='gray')
+    fig.suptitle(('Thực nghiệm 3' if is_exp3 else 'Thực nghiệm 2')+
+                 ' · Chỉ so sánh model trong cùng benchmark',fontweight='bold')
+    fig.text(.5,.015,'Các chỉ số khác định nghĩa, không xếp hạng chung.',ha='center',fontsize=9)
+    fig.tight_layout(rect=(0,.05,1,.94))
     fig.savefig(main_path,bbox_inches='tight',facecolor='white')
     plt.close(fig)
     fig,ax=plt.subplots(figsize=(max(9,2.2*len(models)+3),4.7),dpi=140)
